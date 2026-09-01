@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title description">
+  <title id="title">香农读心机图标</title>
+  <desc id="description">一台带有八格记忆继电器、绿色镜头和 1953 铭牌的复古机器</desc>
+  <defs>
+    <linearGradient id="case" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0d3130"/>
+      <stop offset="1" stop-color="#041216"/>
+    </linearGradient>
+    <radialGradient id="lens" cx="44%" cy="38%" r="65%">
+      <stop offset="0" stop-color="#164c43"/>
+      <stop offset="0.7" stop-color="#06191d"/>
+      <stop offset="1" stop-color="#020a0d"/>
+    </radialGradient>
+    <linearGradient id="beam" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ef665c" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#ef665c" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#ffb84a" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="7" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <pattern id="scanlines" width="8" height="8" patternUnits="userSpaceOnUse">
+      <path d="M0 7.5H8" stroke="#76f7b0" stroke-opacity="0.055"/>
+    </pattern>
+  </defs>
+
+  <rect width="512" height="512" rx="104" fill="#031016"/>
+  <rect x="18" y="18" width="476" height="476" rx="88" fill="url(#case)" stroke="#69837b" stroke-width="5"/>
+  <rect x="32" y="32" width="448" height="448" rx="76" fill="url(#scanlines)" stroke="#183c3a" stroke-width="2"/>
+
+  <g fill="none" stroke="#315a55" stroke-width="5" stroke-linecap="round">
+    <path d="M126 143H169M126 205H151M126 267H151M126 329H169"/>
+    <path d="M386 143H343M386 205H361M386 267H361M386 329H343"/>
+  </g>
+
+  <g fill="#07181b" stroke="#69837b" stroke-width="5">
+    <rect x="62" y="124" width="66" height="38" rx="8"/><rect x="384" y="124" width="66" height="38" rx="8"/>
+    <rect x="62" y="186" width="66" height="38" rx="8"/><rect x="384" y="186" width="66" height="38" rx="8"/>
+    <rect x="62" y="248" width="66" height="38" rx="8"/><rect x="384" y="248" width="66" height="38" rx="8"/>
+    <rect x="62" y="310" width="66" height="38" rx="8"/><rect x="384" y="310" width="66" height="38" rx="8"/>
+  </g>
+  <g fill="#76f7b0" filter="url(#glow)">
+    <circle cx="95" cy="143" r="8"/><circle cx="417" cy="143" r="8"/>
+    <circle cx="95" cy="205" r="8"/><circle cx="417" cy="205" r="8"/>
+    <circle cx="95" cy="267" r="8"/><circle cx="417" cy="267" r="8"/>
+    <circle cx="95" cy="329" r="8"/><circle cx="417" cy="329" r="8"/>
+  </g>
+
+  <circle cx="256" cy="236" r="132" fill="#061316" stroke="#294f4a" stroke-width="14"/>
+  <circle cx="256" cy="236" r="111" fill="url(#lens)" stroke="#76f7b0" stroke-opacity="0.56" stroke-width="5"/>
+  <path d="M155 310L346 155" stroke="url(#beam)" stroke-width="28" stroke-linecap="round"/>
+  <path d="M218 207c0-33 22-53 57-53 36 0 59 21 59 52 0 27-15 41-37 53-21 12-28 22-28 45" fill="none" stroke="#76f7b0" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+  <circle cx="269" cy="338" r="13" fill="#ffb84a" filter="url(#glow)"/>
+  <path d="M189 119c20-18 43-27 68-27" fill="none" stroke="#c9ffe0" stroke-opacity="0.62" stroke-width="8" stroke-linecap="round"/>
+
+  <g>
+    <rect x="164" y="405" width="184" height="56" rx="10" fill="#071518" stroke="#69837b" stroke-width="4"/>
+    <text x="256" y="444" fill="#ffb84a" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="30" font-weight="700" letter-spacing="10" text-anchor="middle">1953</text>
+  </g>
+  <g fill="#061012" stroke="#9ab1a8" stroke-width="3">
+    <circle cx="61" cy="61" r="10"/><circle cx="451" cy="61" r="10"/>
+    <circle cx="61" cy="451" r="10"/><circle cx="451" cy="451" r="10"/>
+  </g>
+</svg>

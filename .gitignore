@@ -1,0 +1,18 @@
+node_modules/
+dist/
+.codex/
+.claude/
+.env
+.env.*
+!.env.example
+
+.DS_Store
+*.log
+*.xlsx
+*.csv
+
+# Local pilot and QA artifacts
+qa/
+pilot/
+pilot-data/
+screenshots/
