@@ -108,6 +108,16 @@
   padding-bottom: var(--safe-area-inset-bottom, 15px);
 }
 .share-card-modal__panel { width: 100%; max-width: 430px; }
+.share-card-tabs { display: grid; grid-template-columns: 1fr 1fr; grid-gap: 6px; gap: 6px; margin: 10px 0 8px; }
+.share-card-tabs button {
+  padding: 8px 6px;
+  border: 1px solid rgba(118, 247, 176, 0.32);
+  background: rgba(4, 20, 27, 0.7);
+  color: #9db5ad;
+  font-size: var(--type-label);
+  cursor: pointer;
+}
+.share-card-tabs button[aria-selected="true"] { border-color: var(--signal); background: rgba(240, 170, 61, 0.14); color: #f4dcae; }
 
 /* Flex spacing uses margins until a measured layout test confirms flex gap. */
 .life-bank > span > * + *,
@@ -1216,6 +1226,50 @@
 .visit-profile > p i { margin: 0 6px; color: #617c73; font-style: normal; }
 .visit-profile > p.visit-readable { margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(118, 247, 176, 0.18); color: #c9d8d1; }
 .visit-profile > p.visit-readable b { color: var(--duel-amber); }
+
+/*
+ * The behavioural title. Amber like the searchlight, because that is the axis
+ * most players earn it on — and visually distinct from the egg, which is the
+ * other label on the same screen and must not read as the same object.
+ */
+.persona-card {
+  max-width: 390px;
+  margin: 0 auto 12px;
+  padding: 11px 13px 12px;
+  border: 1px solid rgba(240, 170, 61, 0.4);
+  background: rgba(20, 14, 4, 0.42);
+  text-align: left;
+}
+
+/* Collapsed by default: the name is the payoff, the working is for whoever asks. */
+.persona-card > summary { padding: 2px 0; cursor: pointer; list-style: none; }
+.persona-card > summary::-webkit-details-marker { display: none; }
+.persona-card > summary::after {
+  display: block;
+  margin-top: 7px;
+  color: #a9977a;
+  font: var(--type-micro) ui-monospace, monospace;
+  content: "▾ 展开";
+}
+
+.persona-card[open] > summary::after { content: "▴ 收起"; }
+.persona-card[open] > summary .persona-meta { display: none; }
+.persona-card > summary:focus { outline: 2px solid var(--signal); outline-offset: 3px; }
+.persona-eyebrow { display: block; color: #a9977a; font: var(--type-micro) ui-monospace, monospace; letter-spacing: 0.07em; }
+.persona-meta { display: block; margin-top: 4px; color: #a9977a; font: var(--type-micro) ui-monospace, monospace; }
+.persona-name { display: block; margin: 6px 0 0; color: var(--signal); font-family: Georgia, "Songti SC", serif; font-size: 27px; line-height: 1.15; }
+.persona-card[open] .persona-name { margin-bottom: 9px; }
+.persona-axes { margin: 0; padding: 0; list-style: none; }
+.persona-axes li { padding: 6px 0; border-top: 1px solid rgba(240, 170, 61, 0.16); }
+.persona-axes li:first-child { border-top: 0; padding-top: 0; }
+.persona-axes strong { display: block; color: #f1e6cd; font-size: var(--type-caption); line-height: 1.45; }
+.persona-axes small { display: block; margin-top: 2px; color: #a8bbb1; font: var(--type-micro) ui-monospace, monospace; }
+.persona-unread { margin: 0; color: #c9d8d1; font-size: var(--type-label); line-height: 1.5; }
+.persona-unread em { display: block; margin-top: 4px; color: #a9977a; font-style: normal; }
+.persona-card.is-unread { border-color: rgba(118, 247, 176, 0.4); background: rgba(5, 25, 30, 0.6); }
+.persona-card.is-unread .persona-name { color: var(--duel-green); }
+.persona-card.is-unread .persona-eyebrow,
+.persona-card.is-unread .persona-meta { color: #8da49b; }
 
 /*
  * The end-of-run reveal. It is the payoff for the whole run, so it gets the

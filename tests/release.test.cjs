@@ -111,10 +111,19 @@ test("the run ends with a statistical reveal about the player, not about the mac
 
   assert.match(game, /Engine\.analyseSwitching\(choices\)/);
   assert.match(game, /Engine\.formatTellReport/);
-  // Both endings of the voyage and the research room report it, on screen and
-  // on the share card: three call sites each, beside one definition.
-  assert.equal(game.match(/^\s+\$\{tellReportMarkup\(/gm).length, 3);
-  assert.equal(game.match(/^\s+drawTellLine\(context/gm).length, 3);
+  // Both endings of the voyage and the research room name the behaviour.
+  assert.match(game, /Engine\.classifyPersona/);
+  assert.equal(game.match(/^\s+\$\{personaMarkup\(\)\}/gm).length, 3);
+
+  // The behavioural title is its own share card, not a line crowded onto the
+  // egg's: two tabs, generated separately.
+  assert.match(game, /function drawPersonaShare\(/);
+  assert.match(game, /createShareDataUrl\("result"\)|urlFor\("result"\)/);
+  assert.match(game, /data-card="persona"/);
+  assert.doesNotMatch(game, /drawPersonaShare\(context[^)]*\)[\s\S]{0,40}drawDuelShare/);
+
+  // The behavioural title and the egg must stay separate objects.
+  assert.doesNotMatch(game, /persona[^\n]*蛋|蛋[^\n]*persona/);
 
   // The remembered reaction stays sealed: nothing may render cell.reaction.
   assert.doesNotMatch(game, /\bcell\.reaction\b/);
@@ -199,6 +208,18 @@ test("the 小红书 upload record matches the built artifact", (t) => {
 
   const zip = fs.readFileSync(path.join(root, "dist", artifact.archive));
   assert.equal(zip.length, artifact.bytes, "the archive on disk no longer matches its record");
+});
+
+test("shipped source carries no stray non-CJK scripts", () => {
+  // A colour literal once picked up an Arabic letter from a bad paste and still
+  // parsed. Text is either ASCII, CJK, or the punctuation this project uses.
+  const sources = ["src/engine.js", "src/unified-entry.js", "src/two-mode-prototype.js"]
+    .map((relative) => ({ relative, text: fs.readFileSync(path.join(root, relative), "utf8") }));
+  const allowed = /[\u0000-\u007f\u2000-\u206f\u2100-\u214f\u2190-\u21ff\u2200-\u22ff\u2300-\u23ff\u2500-\u25ff\u3000-\u303f\u4e00-\u9fff\uff00-\uffef\u00a0-\u00ff]/;
+  sources.forEach(({ relative, text }) => {
+    const stray = Array.from(text).filter((glyph) => !allowed.test(glyph));
+    assert.deepEqual(stray, [], `${relative} contains unexpected glyphs: ${JSON.stringify(stray.slice(0, 5))}`);
+  });
 });
 
 test("release JavaScript stays within the Chrome 61 / ES2017 baseline", () => {

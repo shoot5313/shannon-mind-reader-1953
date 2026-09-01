@@ -528,14 +528,31 @@
     return { analysis, report: Engine.formatTellReport(analysis) };
   }
 
-  function tellReportMarkup(tell) {
-    const { report, analysis } = tell;
+  /*
+   * The behavioural title. Deliberately a different kind of object from the egg:
+   * the egg is a sticker for how the run came out, this is a name for how it was
+   * played. A player the four tests could not read gets 无名氏 rather than an
+   * invented type.
+   */
+  function personaMarkup() {
+    const persona = Engine.classifyPersona(state.records);
+    const tell = tellReport();
+    const evidence = persona.axes.map((axis) => `
+      <li><strong>${escapeHtml(axis.headline)}</strong><small>${escapeHtml(axis.detail)}</small></li>
+    `).join("") + persona.unmeasured.map((axis) => `
+      <li class="is-unmeasured"><strong>${escapeHtml(axis.label)}</strong><small>未测出</small></li>
+    `).join("");
     return `
-      <section class="tell-report tell-report--${report.reason}" aria-label="这一局它读到了什么">
-        <header><span>WHAT IT READ</span><b>${analysis.opportunities} 次有效检验</b></header>
-        <strong>${escapeHtml(report.headline)}</strong>
-        <small>${escapeHtml(report.detail)}</small>
-      </section>
+      <details class="persona-card ${persona.unread ? "is-unread" : ""}">
+        <summary aria-label="展开本局行为称号的依据">
+          <span class="persona-eyebrow">BEHAVIOURAL PROFILE</span>
+          <strong class="persona-name">${escapeHtml(persona.name)}</strong>
+          <small class="persona-meta">${persona.measured} / 4 项读到 · 展开看依据</small>
+        </summary>
+        ${persona.unread
+          ? `<p class="persona-unread">${escapeHtml(tell.report.reason === "sample" ? tell.report.detail : persona.summary)}<em>${escapeHtml(tell.report.reason === "sample" ? "手数太少，它没机会读你。" : "它没能给你归类——这一项没几个人拿得到。")}</em></p><ul class="persona-axes">${evidence}</ul>`
+          : `<ul class="persona-axes">${evidence}</ul>`}
+      </details>
     `;
   }
 
@@ -561,7 +578,7 @@
           ${treasureMap(treasure)}
           <div class="treasure-copy"><p>${treasure.rarityLabel} · 图鉴稀有度 ${treasure.rarityLevel} / 3</p><h1>${treasure.name}</h1><strong>带着 ${state.result.lives} 盏命灯 · 航行 ${ADVENTURE_TOTAL} 海里</strong><span>${greeting}</span></div>
           <div class="treasure-seal"><span>稀有</span><strong>${treasure.rarityLevel}/3</strong></div>
-          ${tellReportMarkup(tell)}
+          ${personaMarkup()}
           <p class="share-note">昵称、路线与结局会写进 1080 × 1440 战报图</p>
           <div class="result-action-row result-action-row--adventure"><button class="share-result-button share-result-button--gold" type="button" data-action="share">生成图鉴战报</button><button class="result-restart result-restart--gold" type="button" data-action="restart">再寻一件宝藏</button></div>
           ${researchClue(true)}
@@ -579,7 +596,7 @@
           <strong>截获</strong>
         </div>
         <div class="captured-copy"><p>${safeNickname}，三盏命灯全部熄灭</p><h1>海图断在<br>第 ${state.result.round} 海里</h1><span>${lossGreeting}</span></div>
-        ${tellReportMarkup(tell)}
+        ${personaMarkup()}
         <div class="result-action-row result-action-row--adventure"><button class="share-result-button" type="button" data-action="share">生成截获战报</button><button class="result-restart" type="button" data-action="restart">换条路线，再来</button></div>
         ${researchClue(false)}
       </section>
@@ -770,7 +787,7 @@
           <h2>${greeting}</h2>
           <p class="egg-copy">${copy.text}</p>
           ${achievement}
-          ${tellReportMarkup(tellReport())}
+          ${personaMarkup()}
           ${visitProfileMarkup(result.visitProfile)}
           <div class="egg-score"><span>你 <b>${result.playerWins}</b></span><i>:</i><span>机器 <b>${result.machineWins}</b></span></div>
           <footer><span>8 × 8 手 · 本机计算</span><span>未联网 / 未上传</span></footer>
@@ -839,31 +856,89 @@
   }
 
   /*
-   * The line that turns the card from a printed random number into a statement
-   * about the player. Drawn centred, above the footer, on both cards.
+   * The behavioural title gets its own card rather than a line on the egg's.
+   *
+   * The egg is the punchline and wants a clean canvas; this is the depth, for
+   * whoever asks "why". Given the whole 1080x1440 it can show every axis that
+   * fired with the numbers that earned it, instead of the single cramped line
+   * that was colliding with the footprint.
    */
-  function drawTellLine(context, tell, y, accent, muted) {
-    const { report } = tell;
+  function drawPersonaShare(context, accent) {
+    const persona = Engine.classifyPersona(state.records);
+    const tell = tellReport();
+    context.fillStyle = "#061923";
+    context.fillRect(0, 0, 1080, 1440);
+    drawCardGrid(context, "rgba(118,247,176,0.045)", 54);
+    drawShareHeader(context, "BEHAVIOURAL PROFILE / 1953", true);
+
+    context.strokeStyle = persona.unread ? "#4f9f78" : accent;
+    context.lineWidth = 6;
+    context.strokeRect(78, 185, 924, 1190);
+
     context.textAlign = "center";
-    context.strokeStyle = muted;
-    context.lineWidth = 2;
-    context.beginPath();
-    context.moveTo(200, y - 34);
-    context.lineTo(880, y - 34);
-    context.stroke();
+    context.fillStyle = accent;
+    context.font = canvasFont(23, { mono: true, weight: 700 });
+    context.fillText(`CALLSIGN / ${nickname}`, 540, 268);
+
+    context.fillStyle = persona.unread ? "#76f7b0" : "#f4dcae";
+    context.font = canvasFont(96, { serif: true, weight: 700 });
+    drawWrappedText(context, persona.name, 540, 400, 880, 108, 2);
 
     context.fillStyle = accent;
-    context.font = canvasFont(19, { mono: true, weight: 700 });
-    context.fillText(report.revealed ? "WHAT IT READ" : "NO TELL ON RECORD", 540, y);
+    context.font = canvasFont(24, { mono: true, weight: 700 });
+    context.fillText(`${persona.measured} / 4 项读到`, 540, 500);
 
-    // Sized so the engine's longest headline (30 glyphs) and detail (42) each
-    // still fit on one line; the second line is slack, not the expected case.
-    context.fillStyle = muted;
-    context.font = canvasFont(26, { serif: true, weight: 700 });
-    const afterHeadline = drawWrappedText(context, report.headline, 540, y + 40, 860, 36, 2);
+    context.strokeStyle = "rgba(118,247,176,0.3)";
+    context.lineWidth = 2;
+    context.beginPath();
+    context.moveTo(160, 552);
+    context.lineTo(920, 552);
+    context.stroke();
 
-    context.font = canvasFont(19, { mono: true });
-    return drawWrappedText(context, report.detail, 540, afterHeadline + 10, 880, 28, 2);
+    if (persona.unread) {
+      context.textAlign = "center";
+      context.fillStyle = "#d7e1db";
+      context.font = canvasFont(31, { serif: true, weight: 700 });
+      const after = drawWrappedText(context, tell.report.headline, 540, 622, 860, 44, 2);
+      context.fillStyle = "#a8bbb1";
+      context.font = canvasFont(21, { mono: true });
+      drawWrappedText(context, tell.report.detail, 540, after + 20, 880, 30, 2);
+    }
+
+    // All four rows, lit or not: two people can lay their cards side by side and
+    // read which rows the machine got.
+    let y = persona.unread ? 838 : 672;
+    persona.axes.forEach((axis) => {
+      context.textAlign = "left";
+      context.fillStyle = accent;
+      context.font = canvasFont(30, { mono: true, weight: 700 });
+      context.fillText("\u25cf", 150, y);
+      context.fillStyle = "#f1e6cd";
+      context.font = canvasFont(31, { serif: true, weight: 700 });
+      const after = drawWrappedText(context, axis.headline, 196, y, 748, 42, 2);
+      context.fillStyle = "#9db5ad";
+      context.font = canvasFont(21, { mono: true });
+      drawWrappedText(context, axis.detail, 196, after + 8, 790, 30, 1);
+      y = after + 78;
+    });
+    persona.unmeasured.forEach((axis) => {
+      context.textAlign = "left";
+      context.fillStyle = "#3f5b54";
+      context.font = canvasFont(30, { mono: true, weight: 700 });
+      context.fillText("\u25cb", 150, y);
+      context.fillStyle = "#6f8887";
+      context.font = canvasFont(29, { serif: true, weight: 700 });
+      context.fillText(axis.label, 196, y);
+      context.fillStyle = "#4f6a62";
+      context.font = canvasFont(21, { mono: true });
+      context.fillText("未测出", 196, y + 34);
+      y += 106;
+    });
+
+    context.textAlign = "left";
+    context.fillStyle = "#69837b";
+    context.font = canvasFont(18, { mono: true });
+    context.fillText(`${state.records.length} MOVES / GENERATED LOCALLY / NOT UPLOADED`, 78, 1420);
   }
 
   function drawShareHeader(context, label, dark = true) {
@@ -981,7 +1056,6 @@
       context.fillText(`${treasure.rarityLabel} · 稀有等级 ${treasure.rarityLevel} / 3 · ${state.result.lives} 盏命灯`, 540, 1078);
       context.font = canvasFont(26, { serif: true, weight: 700 });
       drawWrappedText(context, Engine.formatTreasureGreeting(nickname, treasure), 540, 1125, 840, 38, 2);
-      drawTellLine(context, tell, 1250, "#9f382f", "#26433c");
     } else {
       context.save();
       const beam = context.createLinearGradient(540, 160, 540, 930);
@@ -1027,7 +1101,6 @@
       context.fillStyle = "#a8bbb1";
       context.font = canvasFont(26, { serif: true });
       drawWrappedText(context, Engine.formatAdventureLossGreeting(nickname, state.result.round), 540, 1125, 840, 38, 2);
-      drawTellLine(context, tell, 1250, "#ef6a5f", "#c3d2ca");
     }
 
     context.textAlign = "left";
@@ -1155,7 +1228,6 @@
 
     // The card bottom is a fixed budget: the tell block needs ~120px and the
     // footprint ~116px, and the achievement plate eats 52 of them when present.
-    drawTellLine(context, tellReport(), secretFile ? 1136 : 1104, accent, "#d7e1db");
     drawDuelVisitSpectrum(
       context,
       result.visitProfile,
@@ -1165,13 +1237,20 @@
     );
   }
 
-  function createShareDataUrl() {
+  function personaAccent() {
+    if (mode === "adventure") return state.result.outcome === "treasure" ? "#ffb84a" : "#ef665c";
+    const { egg } = state.result;
+    return egg.kind === "bad" ? "#ef665c" : egg.kind === "smart" ? "#ffb84a" : egg.kind === "dumb" ? "#9fc5b7" : "#76f7b0";
+  }
+
+  function createShareDataUrl(kind) {
     const canvas = document.createElement("canvas");
     canvas.width = 1080;
     canvas.height = 1440;
     const context = canvas.getContext("2d");
     context.textBaseline = "alphabetic";
-    if (mode === "adventure") drawAdventureShare(context);
+    if (kind === "persona") drawPersonaShare(context, personaAccent());
+    else if (mode === "adventure") drawAdventureShare(context);
     else drawDuelShare(context);
     return canvas.toDataURL("image/png");
   }
@@ -1207,11 +1286,27 @@
     }
   }
 
+  /*
+   * Two cards, not one. The result card is the punchline and is what most
+   * people will save; the behavioural profile is the follow-up for whoever
+   * wants to know why. Both are generated on demand so a player who never opens
+   * the second tab never pays for it.
+   */
   function showShareCard() {
     if (state.screen !== "result") return;
     const previousModal = document.querySelector(".share-card-modal");
     if (previousModal) previousModal.remove();
-    const dataUrl = createShareDataUrl();
+
+    const cards = {
+      result: { label: mode === "adventure" ? "战报" : "严选战报", url: null },
+      persona: { label: "行为称号", url: null },
+    };
+    const urlFor = (kind) => {
+      if (!cards[kind].url) cards[kind].url = createShareDataUrl(kind);
+      return cards[kind].url;
+    };
+    let active = "result";
+
     const modal = document.createElement("div");
     modal.className = "share-card-modal";
     modal.setAttribute("role", "dialog");
@@ -1220,17 +1315,36 @@
     modal.innerHTML = `
       <div class="share-card-modal__panel">
         <header><div><small>FINAL TRANSMISSION</small><strong>${safeNickname} 的战报</strong></div><button type="button" data-close-share aria-label="关闭预览">×</button></header>
-        <img src="${dataUrl}" alt="${safeNickname} 的 1080 × 1440 游戏结果图">
+        <nav class="share-card-tabs" role="tablist">
+          <button type="button" role="tab" data-card="result" aria-selected="true">${cards.result.label}</button>
+          <button type="button" role="tab" data-card="persona" aria-selected="false">${cards.persona.label}</button>
+        </nav>
+        <img src="${urlFor("result")}" alt="${safeNickname} 的 1080 × 1440 游戏结果图">
         <footer><span data-save-status aria-live="polite">点击保存到系统相册</span><button type="button" data-save-share>保存到相册</button></footer>
       </div>
     `;
     document.body.append(modal);
-    const close = () => modal.remove();
-    modal.querySelector("[data-close-share]").addEventListener("click", close);
-    modal.addEventListener("click", (event) => { if (event.target === modal) close(); });
+
+    const image = modal.querySelector("img");
     const saveButton = modal.querySelector("[data-save-share]");
     const saveStatus = modal.querySelector("[data-save-status]");
-    saveButton.addEventListener("click", () => saveShareImage(dataUrl, saveStatus, saveButton));
+    const close = () => modal.remove();
+
+    modal.querySelectorAll("[data-card]").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        active = tab.dataset.card;
+        modal.querySelectorAll("[data-card]").forEach((other) => {
+          other.setAttribute("aria-selected", String(other === tab));
+        });
+        image.src = urlFor(active);
+        image.alt = `${safeNickname} 的 ${cards[active].label} · 1080 × 1440`;
+        saveStatus.textContent = "点击保存到系统相册";
+      });
+    });
+
+    modal.querySelector("[data-close-share]").addEventListener("click", close);
+    modal.addEventListener("click", (event) => { if (event.target === modal) close(); });
+    saveButton.addEventListener("click", () => saveShareImage(urlFor(active), saveStatus, saveButton));
     modal.querySelector("[data-close-share]").focus();
   }
 

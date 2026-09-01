@@ -9,7 +9,12 @@ const {
   createShannonPredictor,
   summariseShannonVisits,
   binomialTwoSided,
+  fisherExactTwoSided,
   analyseSwitching,
+  analyseSideBias,
+  analyseFeedbackShift,
+  analyseLightUse,
+  classifyPersona,
   formatTellReport,
   classifyResult,
   classifyEggScore,
@@ -63,6 +68,117 @@ test("the registered switching test detects an LLRR pattern", () => {
   assert.equal(analysis.direction, "switch");
   assert.equal(analysis.revealable, true);
   assert.ok(analysis.pValue < 0.001);
+});
+
+test("Fisher's exact test matches published values", () => {
+  // Fisher's own tea-tasting table.
+  assert.ok(Math.abs(fisherExactTwoSided(3, 1, 1, 3) - 0.4857) < 0.0005);
+  assert.ok(Math.abs(fisherExactTwoSided(4, 0, 0, 4) - 0.02857) < 0.0005);
+  assert.equal(fisherExactTwoSided(5, 5, 5, 5), 1);
+  // Degenerate tables carry no evidence and must not claim any.
+  assert.equal(fisherExactTwoSided(0, 0, 3, 3), 1);
+  assert.ok(fisherExactTwoSided(40, 10, 20, 30) < 0.001);
+});
+
+test("side bias is corrected for stickiness, or a stayer is called left-handed", () => {
+  // A player who alternates has negative autocorrelation and plenty of
+  // independent information: an even split is correctly read as no preference.
+  const alternating = Array.from({ length: 100 }, (_, index) => index % 2 ? LEFT : RIGHT);
+  const even = analyseSideBias(alternating);
+  assert.equal(even.revealable, false);
+  assert.ok(even.effectiveSamples > alternating.length);
+
+  // Long runs are the trap. Ten blocks of ten is a 50/50 split, but a naive
+  // binomial on 100 hands would treat it as 100 independent decisions.
+  const sticky = [];
+  for (let block = 0; block < 10; block += 1) {
+    for (let index = 0; index < 10; index += 1) sticky.push(block % 2 ? LEFT : RIGHT);
+  }
+  const stickyBias = analyseSideBias(sticky);
+  assert.ok(stickyBias.autocorrelation > 0.7, "long runs must show high autocorrelation");
+  assert.ok(
+    stickyBias.effectiveSamples < 30,
+    `100 sticky hands are not 100 decisions: got ${stickyBias.effectiveSamples}`,
+  );
+  assert.equal(stickyBias.revealable, false);
+
+  // A genuine lean, played independently, is still found.
+  const leaning = Array.from({ length: 120 }, (_, index) => index % 10 < 7 ? RIGHT : LEFT);
+  const leaningBias = analyseSideBias(leaning);
+  assert.equal(leaningBias.direction, "right");
+  assert.ok(leaningBias.rate > 0.65);
+});
+
+test("the feedback and searchlight axes compare two conditional switch rates", () => {
+  // Switches after a catch, stays after an escape: the classic spooked player.
+  const spooked = [];
+  for (let index = 0; index < 60; index += 1) {
+    const caught = index % 2 === 0;
+    const previous = spooked.length ? spooked[spooked.length - 1] : LEFT;
+    const wasCaught = spooked.length ? spooked[spooked.length - 1].correct : false;
+    spooked.push({
+      actual: wasCaught ? opposite(previous.actual || LEFT) : (previous.actual || LEFT),
+      correct: caught,
+      trained: index % 3 === 0,
+    });
+  }
+  const shift = analyseFeedbackShift(spooked);
+  assert.equal(shift.measurable, true);
+  assert.equal(shift.higher, "a", "a spooked player switches more after being caught");
+  assert.ok(shift.revealable);
+
+  // Too few of either condition means no claim, not a claim from three samples.
+  const lopsided = Array.from({ length: 40 }, (_, index) => ({
+    actual: index % 2 ? LEFT : RIGHT,
+    correct: true,
+    trained: true,
+  }));
+  assert.equal(analyseFeedbackShift(lopsided).measurable, false);
+  assert.equal(analyseFeedbackShift(lopsided).revealable, false);
+  assert.equal(analyseLightUse(lopsided).measurable, false);
+
+  // Records without a trained flag cannot be split by lamp state at all.
+  const noLamp = lopsided.map(({ actual, correct }) => ({ actual, correct }));
+  assert.equal(analyseLightUse(noLamp).measurable, false);
+});
+
+test("the persona names behaviour, stays separate from the egg, and can decline to answer", () => {
+  // Too little to read: the honest answer is a name, not a guess. (That a
+  // *pattern-free* run also goes unread is a statistical claim, so it is
+  // measured over thousands of runs in tests/simulation.test.cjs instead —
+  // any short hand-written sequence is periodic, and this machine reads
+  // periodicity for a living.)
+  const thin = Array.from({ length: 12 }, (_, index) => ({
+    actual: index % 2 ? LEFT : RIGHT,
+    correct: index % 3 === 0,
+    trained: index % 2 === 0,
+  }));
+  const unread = classifyPersona(thin);
+  assert.equal(unread.unread, true);
+  assert.equal(unread.name, "无名氏");
+  assert.equal(unread.measured, 0);
+  assert.deepEqual(unread.axes, []);
+
+  // A committed stayer earns the stayer's name and one piece of evidence.
+  const stayer = Array.from({ length: 90 }, (_, index) => ({
+    actual: index < 45 ? LEFT : RIGHT,
+    correct: index % 4 === 0,
+    trained: false,
+  }));
+  const nail = classifyPersona(stayer);
+  assert.equal(nail.base, "钉子户");
+  assert.ok(nail.measured >= 1);
+  assert.ok(nail.axes.some((axis) => axis.key === "habit"));
+  // Every axis has to show its working.
+  nail.axes.forEach((axis) => {
+    assert.ok(axis.headline.length > 0);
+    assert.match(axis.detail, /p (<|=)/);
+  });
+
+  // The persona must never mention the egg, and the egg never the persona:
+  // one describes how the run was played, the other how it came out.
+  assert.doesNotMatch(nail.name, /蛋/);
+  assert.doesNotMatch(nail.axes.map((axis) => axis.headline).join(""), /蛋/);
 });
 
 test("the tell report separates a real habit, a null result, and too small a sample", () => {

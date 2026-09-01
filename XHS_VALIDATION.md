@@ -7,8 +7,8 @@
 ## 最终产物
 
 - 上传 ZIP：`dist/shannon-mind-reader-v1.1.0.zip`
-- ZIP 大小：`461893` bytes（约 `0.44 MiB`）
-- ZIP SHA-256：`674a341e9f70769acf35e678083d6f057eb1b8b20722f1def508c81a85a85077`
+- ZIP 大小：`467633` bytes（约 `0.45 MiB`）
+- ZIP SHA-256：`78bb624df467098cc0c6a8d802946eb02f4f9c7176175d3eb242b4268b7c61e4`
 - 平台图标：`dist/shannon-mind-reader-icon-1024.png`
 - 图标 SHA-256：`66b5a7be9fd5399b82394b88358e5f5beebe8a4fb1c734ac94549b2a8c484240`
 

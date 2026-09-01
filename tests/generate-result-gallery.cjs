@@ -18,6 +18,7 @@ const outputRoot = process.argv[2]
   ? path.resolve(process.argv[2])
   : path.join(projectRoot, "qa", "是勿忑-全结局-20260830");
 const cardsRoot = path.join(outputRoot, "cards");
+const personasRoot = path.join(outputRoot, "personas");
 const screensRoot = path.join(outputRoot, "screens");
 const indexUrl = pathToFileURL(path.join(projectRoot, "index.html"));
 const chromeProfile = mkdtempSync("/tmp/mind-reader-gallery-");
@@ -370,7 +371,24 @@ async function saveViewport(sessionId, target) {
   await writeFile(target, Buffer.from(screenshot.data, "base64"));
 }
 
-async function saveShareCard(sessionId, target) {
+function decodeCard(payload, what) {
+  assert.equal(payload.width, 1080, `${what} width`);
+  assert.equal(payload.height, 1440, `${what} height`);
+  assert.match(payload.src, /^data:image\/png;base64,/);
+  const png = Buffer.from(payload.src.slice(payload.src.indexOf(",") + 1), "base64");
+  assert.equal(png.toString("ascii", 1, 4), "PNG", `${what} PNG signature`);
+  assert.equal(png.readUInt32BE(16), 1080, `${what} IHDR width`);
+  assert.equal(png.readUInt32BE(20), 1440, `${what} IHDR height`);
+  assert.ok(png.length > 20000, `${what} unexpectedly small: ${png.length} bytes`);
+  return png;
+}
+
+/*
+ * Both share cards for one ending: the egg/treasure card and the behavioural
+ * title card behind the second tab. They are separate objects on purpose, so
+ * the gallery has to prove both render rather than assuming the tab works.
+ */
+async function saveShareCard(sessionId, target, personaTarget) {
   const payload = await evaluate(sessionId, `new Promise(function(resolve, reject) {
     var button = document.querySelector('[data-action="share"]');
     if (!button) { reject(new Error("share button missing")); return; }
@@ -378,23 +396,52 @@ async function saveShareCard(sessionId, target) {
     setTimeout(function() {
       var image = document.querySelector(".share-card-modal img");
       if (!image) { reject(new Error("share image missing")); return; }
-      resolve({ src: image.src, width: image.naturalWidth, height: image.naturalHeight });
-    }, 40);
+      var result = { src: image.src, width: image.naturalWidth, height: image.naturalHeight };
+      var personaTab = document.querySelector('[data-card="persona"]');
+      if (!personaTab) { reject(new Error("persona tab missing")); return; }
+      var card = document.querySelector(".persona-card");
+      result.personaName = card ? card.querySelector(".persona-name").textContent.trim() : null;
+      result.personaMeasured = card
+        ? card.querySelectorAll(".persona-axes li:not(.is-unmeasured)").length
+        : null;
+      result.personaRows = card ? card.querySelectorAll(".persona-axes li").length : null;
+      personaTab.click();
+      setTimeout(function() {
+        var persona = document.querySelector(".share-card-modal img");
+        result.personaSrc = persona.src;
+        result.personaWidth = persona.naturalWidth;
+        result.personaHeight = persona.naturalHeight;
+        resolve(result);
+      }, 60);
+    }, 60);
   })`);
-  assert.equal(payload.width, 1080, "share card width");
-  assert.equal(payload.height, 1440, "share card height");
-  assert.match(payload.src, /^data:image\/png;base64,/);
-  const png = Buffer.from(payload.src.slice(payload.src.indexOf(",") + 1), "base64");
-  assert.equal(png.toString("ascii", 1, 4), "PNG", "share card PNG signature");
-  assert.equal(png.readUInt32BE(16), 1080, "PNG IHDR width");
-  assert.equal(png.readUInt32BE(20), 1440, "PNG IHDR height");
-  assert.ok(png.length > 20000, `share card unexpectedly small: ${png.length} bytes`);
+  const png = decodeCard(payload, "share card");
+  const personaPng = decodeCard({
+    src: payload.personaSrc,
+    width: payload.personaWidth,
+    height: payload.personaHeight,
+  }, "persona card");
+
+  // The two tabs must not hand back the same image.
+  assert.notEqual(
+    crypto.createHash("sha256").update(png).digest("hex"),
+    crypto.createHash("sha256").update(personaPng).digest("hex"),
+    "persona tab returned the result card",
+  );
+  assert.ok(payload.personaName, "persona card has no name");
+  assert.equal(payload.personaRows, 4, "the persona must report all four axes");
+
   await writeFile(target, png);
+  await writeFile(personaTarget, personaPng);
   return {
     width: payload.width,
     height: payload.height,
     bytes: png.length,
     sha256: crypto.createHash("sha256").update(png).digest("hex"),
+    personaBytes: personaPng.length,
+    personaSha256: crypto.createHash("sha256").update(personaPng).digest("hex"),
+    personaName: payload.personaName,
+    personaMeasured: payload.personaMeasured,
   };
 }
 
@@ -458,9 +505,13 @@ function galleryHtml(results) {
   const cards = results.map((result) => `
     <article class="case ${result.pass ? "pass" : "fail"}">
       <header><span>${result.pass ? "PASS" : "FAIL"}</span><h2>${escapeHtml(result.title)}</h2></header>
-      ${result.pass ? `<a href="${escapeHtml(result.card)}"><img src="${escapeHtml(result.card)}" alt="${escapeHtml(result.title)}结果卡"></a>` : ""}
+      ${result.pass ? `<div class="pair">
+        <a href="${escapeHtml(result.card)}"><img src="${escapeHtml(result.card)}" alt="${escapeHtml(result.title)}结果卡"></a>
+        <a href="${escapeHtml(result.persona)}"><img src="${escapeHtml(result.persona)}" alt="${escapeHtml(result.title)}行为称号卡"></a>
+      </div>` : ""}
       <dl>
         <div><dt>结果</dt><dd>${escapeHtml(result.actualLabel || result.actualOutcome || "—")}</dd></div>
+        <div><dt>称号</dt><dd>${escapeHtml(result.personaName || "—")}${result.personaMeasured === undefined ? "" : ` · ${result.personaMeasured}/4`}</dd></div>
         <div><dt>文案</dt><dd>${escapeHtml(result.actualGreeting || result.error || "—")}</dd></div>
         ${result.score ? `<div><dt>比分</dt><dd>${escapeHtml(result.score)}</dd></div>` : ""}
         ${result.pass ? `<div><dt>PNG</dt><dd>${result.width}×${result.height} · ${Math.round(result.bytes / 1024)} KB</dd></div>` : ""}
@@ -472,12 +523,13 @@ function galleryHtml(results) {
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${nickname} · 香农全结局 QA</title>
 <style>
-:root{color-scheme:dark;font-family:ui-monospace,SFMono-Regular,Consolas,"PingFang SC",sans-serif;background:#07110d;color:#d9ead4}*{box-sizing:border-box}body{margin:0;background:linear-gradient(rgba(55,255,147,.025) 1px,transparent 1px),#07110d;background-size:100% 4px}main{width:min(1500px,94vw);margin:auto;padding:48px 0 80px}h1{font-family:Georgia,"Songti SC",serif;font-size:clamp(32px,6vw,72px);margin:.15em 0}.lead{color:#8eb59c;max-width:760px;line-height:1.75}.summary{display:inline-flex;gap:18px;border:1px solid #53e28c;padding:10px 14px;margin:12px 0 34px}.summary b{color:#ffcd6b}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:22px}.case{border:1px solid #325f47;background:#0b1812;padding:14px;box-shadow:8px 8px 0 #030a07}.case.fail{border-color:#ff675f}.case header span{font-size:11px;letter-spacing:.18em;color:#53e28c}.case.fail header span{color:#ff675f}.case h2{font-size:17px;min-height:42px;margin:8px 0 12px}.case img{display:block;width:100%;aspect-ratio:3/4;object-fit:cover;background:#111;border:1px solid #49624f}.case dl{font-family:"PingFang SC",sans-serif;font-size:13px;line-height:1.55}.case dl div{display:grid;grid-template-columns:44px 1fr;gap:7px;margin:8px 0}.case dt{color:#769481}.case dd{margin:0}.case footer{display:flex;justify-content:space-between;gap:8px;border-top:1px solid #294334;padding-top:10px;font-size:11px}.case a{color:#70f0a6}.case code{color:#768b7d}small{color:#617a69}</style></head>
-<body><main><p>OFFLINE QA / BELL LABS 1953</p><h1>“${nickname}”全结局测试</h1><p class="lead">所有局均由真实前端循环在 390×844 手机视口完成。结果卡由产品自己的 Canvas 代码生成，没有拼接假图。</p><div class="summary"><span>${passed}/${results.length} 通过</span><b>${results.every((result) => result.pass) ? "ALL GREEN" : "CHECK FAILURES"}</b></div><section class="grid">${cards}</section><p><small>生成时间：${new Date().toISOString()} · seed 1953 · 完全离线</small></p></main></body></html>`;
+:root{color-scheme:dark;font-family:ui-monospace,SFMono-Regular,Consolas,"PingFang SC",sans-serif;background:#07110d;color:#d9ead4}*{box-sizing:border-box}body{margin:0;background:linear-gradient(rgba(55,255,147,.025) 1px,transparent 1px),#07110d;background-size:100% 4px}main{width:min(1500px,94vw);margin:auto;padding:48px 0 80px}h1{font-family:Georgia,"Songti SC",serif;font-size:clamp(32px,6vw,72px);margin:.15em 0}.lead{color:#8eb59c;max-width:760px;line-height:1.75}.summary{display:inline-flex;gap:18px;border:1px solid #53e28c;padding:10px 14px;margin:12px 0 34px}.summary b{color:#ffcd6b}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:22px}.case{border:1px solid #325f47;background:#0b1812;padding:14px;box-shadow:8px 8px 0 #030a07}.case.fail{border-color:#ff675f}.case header span{font-size:11px;letter-spacing:.18em;color:#53e28c}.case.fail header span{color:#ff675f}.case h2{font-size:17px;min-height:42px;margin:8px 0 12px}.case img{display:block;width:100%;aspect-ratio:3/4;object-fit:cover;background:#111;border:1px solid #49624f}.case .pair{display:grid;grid-template-columns:1fr 1fr;gap:6px}.case dl{font-family:"PingFang SC",sans-serif;font-size:13px;line-height:1.55}.case dl div{display:grid;grid-template-columns:44px 1fr;gap:7px;margin:8px 0}.case dt{color:#769481}.case dd{margin:0}.case footer{display:flex;justify-content:space-between;gap:8px;border-top:1px solid #294334;padding-top:10px;font-size:11px}.case a{color:#70f0a6}.case code{color:#768b7d}small{color:#617a69}</style></head>
+<body><main><p>OFFLINE QA / BELL LABS 1953</p><h1>“${nickname}”全结局测试</h1><p class="lead">所有局均由真实前端循环在 390×844 手机视口完成。左为结果卡（蛋／藏宝），右为行为称号卡；两张都由产品自己的 Canvas 代码生成，没有拼接假图。称号由四项显著性检验决定，未通过的项在卡上写明「未测出」。</p><div class="summary"><span>${passed}/${results.length} 通过</span><b>${results.every((result) => result.pass) ? "ALL GREEN" : "CHECK FAILURES"}</b></div><section class="grid">${cards}</section><p><small>生成时间：${new Date().toISOString()} · seed 1953 · 完全离线</small></p></main></body></html>`;
 }
 
 async function main() {
   await mkdir(cardsRoot, { recursive: true });
+  await mkdir(personasRoot, { recursive: true });
   await mkdir(screensRoot, { recursive: true });
 
   const { targetId } = await send("Target.createTarget", { url: "about:blank" });
@@ -532,13 +584,19 @@ async function main() {
       assertViewport(actual);
 
       const cardName = `cards/${testCase.id}.png`;
+      const personaName = `personas/${testCase.id}.png`;
       const screenName = `screens/${testCase.id}-mobile.png`;
       await saveViewport(sessionId, path.join(outputRoot, screenName));
-      const card = await saveShareCard(sessionId, path.join(outputRoot, cardName));
+      const card = await saveShareCard(
+        sessionId,
+        path.join(outputRoot, cardName),
+        path.join(outputRoot, personaName),
+      );
       if (testCase === duelCases[0]) await assertNativeSaveBridge(sessionId);
       Object.assign(result, card, {
         pass: true,
         card: cardName,
+        persona: personaName,
         screen: screenName,
         score: `${actual.playerWins}:${actual.machineWins}`,
         actualLabel: actual.label,
@@ -570,9 +628,14 @@ async function main() {
       assertViewport(actual);
 
       const cardName = `cards/${testCase.id}.png`;
+      const personaName = `personas/${testCase.id}.png`;
       const screenName = `screens/${testCase.id}-mobile.png`;
       await saveViewport(sessionId, path.join(outputRoot, screenName));
-      const card = await saveShareCard(sessionId, path.join(outputRoot, cardName));
+      const card = await saveShareCard(
+        sessionId,
+        path.join(outputRoot, cardName),
+        path.join(outputRoot, personaName),
+      );
       const transition = await evaluate(sessionId, `(() => {
         document.querySelector('[data-close-share]')?.click();
         document.querySelector('[data-action="research"]').click();
@@ -588,6 +651,7 @@ async function main() {
       Object.assign(result, card, {
         pass: true,
         card: cardName,
+        persona: personaName,
         screen: screenName,
         score: testCase.outcome === "captured" ? `第 ${actual.round} 海里` : `${actual.round} 海里 / ${actual.lives} 盏命灯`,
         actualOutcome: actual.outcome,
@@ -607,20 +671,27 @@ async function main() {
     result.actualLabel || result.actualOutcome || "—",
     result.score || "—",
     result.actualGreeting || result.error || "—",
+    result.personaName ? `${result.personaName} (${result.personaMeasured}/4)` : "—",
     result.card || "—",
+    result.persona || "—",
   ].map(markdownCell).join(" | "));
   const report = `# ${nickname} · 香农全结局 QA\n\n` +
     `- 结果：${passed}/${results.length} 通过\n` +
     `- 环境：390×844 CSS px，deviceScaleFactor 2，seed 1953\n` +
     `- 卡片：每张均验证为 1080×1440 PNG，并记录 SHA-256\n` +
     `- 执行：真实页面状态循环；预测先封存，再按指定胜负路径选择\n\n` +
-    `| 状态 | 用例 | 实际结果 | 比分/航程 | 实际文案 | 结果卡 |\n|---|---|---|---|---|---|\n` +
+    `| 状态 | 用例 | 实际结果 | 比分/航程 | 实际文案 | 行为称号 | 结果卡 | 称号卡 |\n|---|---|---|---|---|---|---|---|\n` +
     `${reportRows.join("\n")}\n\n` +
     `## 已覆盖边界\n\n` +
     `- 32:32 的 100% 普通蛋\n- 33:31 的 100% 聪明蛋与 31:33 的 100% 笨蛋\n` +
-    `- 48:16 与 16:48 恰好 3:1，不提前触发隐藏成就\n` +
+    `- 43:21 与 21:43 恰好 2:1，正好触发隐藏成就；42:22 与 22:42 不触发\n` +
     `- 49:15 的 100% 聪明蛋，以及 15:49 的 100% 大坏蛋\n` +
-    `- 0:64 极端大坏蛋\n- 100 海里宝藏与第 19 海里最早截获路径\n`;
+    `- 0:64 极端大坏蛋\n- 100 海里宝藏与第 19 海里最早截获路径\n` +
+    `- 行为称号卡的全部版式：${[4, 3, 2, 1, 0]
+      .filter((count) => results.some((result) => result.personaMeasured === count))
+      .map((count) => `${count}/4`)
+      .join(" · ")} 项读到\n` +
+    `- 同一个称号出现在不同的蛋上，证明行为与结果两套标签互不绑定\n`;
 
   await writeFile(path.join(outputRoot, "manifest.json"), `${JSON.stringify({
     nickname,

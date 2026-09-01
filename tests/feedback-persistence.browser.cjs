@@ -355,7 +355,7 @@ function checkSearchlight() {
   runCapture(url, "/tmp/shannon-searchlight.png", action);
 }
 
-function checkTellReveal() {
+function checkPersonaReveal() {
   const url = new URL(entry);
   url.searchParams.set("variant", "duel");
   url.searchParams.set("name", "反馈测试");
@@ -364,38 +364,72 @@ function checkTellReveal() {
   url.searchParams.set("seed", "1953");
   url.searchParams.set("qa", "1");
   url.searchParams.set("speed", "0");
+  // A committed stayer, so the habit axis has something real to find.
   const action = `new Promise(function(resolve, reject) {
     var api = window.__twoModePrototype;
     var deadline = Date.now() + 9000;
+    var previous = null;
     function step() {
-      if (Date.now() > deadline) { reject(new Error("tell reveal timed out")); return; }
+      if (Date.now() > deadline) { reject(new Error("persona reveal timed out")); return; }
       var state = api.getState();
 
       if (state.screen === "result") {
-        var tell = document.querySelector(".tell-report");
-        if (!tell) { reject(new Error("the result never revealed what it read")); return; }
-        var text = tell.textContent.replace(/\\s+/g, " ").trim();
-        if (!/次有效检验/.test(text)) { reject(new Error("tell report has no sample size: " + text)); return; }
-        // The remembered reaction must never reach the screen.
+        var card = document.querySelector(".persona-card");
+        if (!card) { reject(new Error("the result never named the player's behaviour")); return; }
+        var name = card.querySelector(".persona-name").textContent.trim();
+        if (!name) { reject(new Error("persona card has no name")); return; }
+
+        // A measured axis must show the statistic that earned it; an unmeasured
+        // one must say so rather than being quietly dropped or dressed up.
+        var rows = [].map.call(card.querySelectorAll(".persona-axes li"), function (n) {
+          return { text: n.textContent.replace(/\\s+/g, " ").trim(),
+                   measured: n.className.indexOf("is-unmeasured") < 0 };
+        });
+        if (rows.length !== 4) { reject(new Error("expected all four axes, got " + rows.length)); return; }
+        for (var i = 0; i < rows.length; i++) {
+          if (rows[i].measured && !/p (<|=)/.test(rows[i].text)) {
+            reject(new Error("a measured axis carried no p-value: " + rows[i].text));
+            return;
+          }
+          if (!rows[i].measured && !/未测出/.test(rows[i].text)) {
+            reject(new Error("an unmeasured axis did not say so: " + rows[i].text));
+            return;
+          }
+        }
+        var axes = rows.filter(function (r) { return r.measured; }).map(function (r) { return r.text; });
+
+        // The behavioural title and the egg are different objects and must not
+        // borrow each other's language.
+        if (/蛋/.test(card.textContent)) { reject(new Error("persona card mentions the egg: " + name)); return; }
+        var egg = document.querySelector(".egg-card h1");
+        if (egg && new RegExp(name).test(egg.textContent)) {
+          reject(new Error("the egg repeated the persona name"));
+          return;
+        }
+
+        // The remembered reaction stays sealed.
         if (/记住的是|格里写着|学会了留|学会了换/.test(document.body.textContent)) {
           reject(new Error("the result leaked what a cell remembered"));
           return;
         }
-        // The coin was cut; no stray affordance may survive in either mode.
+        // The coin was cut; no stray affordance may survive.
         if (document.querySelector('[data-action="coin"]')) {
           reject(new Error("a coin control survived the cut"));
           return;
         }
-        resolve({ tell: text });
+        resolve({ persona: name, axes: axes, egg: egg ? egg.textContent.trim() : null });
         return;
       }
 
-      if (!state.locked) api.choose(state.pending.choice === "L" ? "R" : "L");
+      if (!state.locked) {
+        previous = previous === null ? "L" : (Math.random() < 0.82 ? previous : (previous === "L" ? "R" : "L"));
+        api.choose(previous);
+      }
       setTimeout(step, 0);
     }
     step();
   })`;
-  runCapture(url, "/tmp/shannon-tell-reveal.png", action);
+  runCapture(url, "/tmp/shannon-persona.png", action);
 }
 
 checkAdventureBrief();
@@ -407,5 +441,5 @@ checkAdventureMilestones();
 checkAdventureCaptureFeedback();
 checkSearchlight();
 checkDuelBanksAndReset();
-checkTellReveal();
-process.stdout.write("Onboarding, persistent feedback, voyage milestones, the searchlight, the end-of-run reveal, and CASE 8 banks/reset pass.\n");
+checkPersonaReveal();
+process.stdout.write("Onboarding, persistent feedback, voyage milestones, the searchlight, the behavioural title, and CASE 8 banks/reset pass.\n");

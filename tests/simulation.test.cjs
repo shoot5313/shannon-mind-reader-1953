@@ -8,6 +8,10 @@ const {
   createShannonPredictor,
   advanceAdventureDanger,
   analyseSwitching,
+  analyseSideBias,
+  analyseFeedbackShift,
+  analyseLightUse,
+  classifyPersona,
   classifyResult,
 } = require("../src/engine.js");
 
@@ -215,5 +219,70 @@ test("reading the searchlight beats flipping a coin, and ignoring it loses to on
   assert.ok(
     habitReading > 0.08,
     `the light must not trivialise the voyage: reading ${pct(habitReading)}`,
+  );
+});
+
+
+/*
+ * The persona is a claim about a person, so every axis must stay honest on
+ * someone who has no pattern at all. Each test is nominally 5%; the bands allow
+ * for sampling noise at 1500 runs.
+ *
+ * The side-bias axis is the one that needs watching. A plain binomial on L/R
+ * counts labelled 48% of pattern-free-but-sticky players as left- or
+ * right-handed, because long same-side runs break the independence the test
+ * assumes. analyseSideBias corrects by effective sample size; if that correction
+ * is ever weakened, the sticky case below is what will catch it.
+ */
+test("a player with no pattern is not given a personality", () => {
+  const sessions = 1500;
+  const fired = { habit: 0, side: 0, light: 0, feedback: 0, named: 0 };
+  const stickyFired = { side: 0 };
+
+  for (let seed = 1; seed <= sessions; seed += 1) {
+    const random = linearRandom(seed * 7919);
+    const predictor = createShannonPredictor({ seed });
+    const records = [];
+    for (let round = 0; round < 100; round += 1) {
+      predictor.predict();
+      records.push(predictor.observe(random() < 0.5 ? LEFT : RIGHT));
+    }
+    const choices = records.map((record) => record.actual);
+    if (analyseSwitching(choices).revealable) fired.habit += 1;
+    if (analyseSideBias(choices).revealable) fired.side += 1;
+    if (analyseLightUse(records).revealable) fired.light += 1;
+    if (analyseFeedbackShift(records).revealable) fired.feedback += 1;
+    if (!classifyPersona(records).unread) fired.named += 1;
+
+    // Same absence of side preference, but played stickily.
+    const stickyRandom = linearRandom(seed * 104729);
+    const sticky = createShannonPredictor({ seed });
+    const stickyChoices = [];
+    let current = stickyRandom() < 0.5 ? LEFT : RIGHT;
+    for (let round = 0; round < 100; round += 1) {
+      if (stickyRandom() >= 0.8) current = opposite(current);
+      sticky.observe(current);
+      stickyChoices.push(current);
+    }
+    if (analyseSideBias(stickyChoices).revealable) stickyFired.side += 1;
+  }
+
+  const rate = (count) => count / sessions;
+  const pct = (count) => `${(rate(count) * 100).toFixed(1)}%`;
+
+  ["habit", "side", "light", "feedback"].forEach((axis) => {
+    assert.ok(
+      rate(fired[axis]) < 0.09,
+      `${axis} fired on ${pct(fired[axis])} of pattern-free players (nominal 5%)`,
+    );
+  });
+  assert.ok(
+    rate(stickyFired.side) < 0.09,
+    `side bias fired on ${pct(stickyFired.side)} of sticky players with no side preference`,
+  );
+  // Four independent 5% tests, so roughly one run in five earns some name.
+  assert.ok(
+    rate(fired.named) < 0.3,
+    `${pct(fired.named)} of pattern-free players were given a persona`,
   );
 });

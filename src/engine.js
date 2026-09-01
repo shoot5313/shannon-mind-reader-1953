@@ -305,6 +305,48 @@
     });
   }
 
+  /*
+   * Fisher's exact test on a 2x2 table. Used wherever two rates have to be
+   * compared (switch rate after a catch vs after an escape, and so on). Exact
+   * rather than a normal approximation, for the same reason binomialTwoSided is
+   * exact: these tests decide what the machine claims about a person, and the
+   * counts involved are small enough that an approximation would misbehave
+   * exactly where players are most likely to be mislabelled.
+   */
+  function fisherExactTwoSided(a, b, c, d) {
+    const counts = [a, b, c, d];
+    if (!counts.every((value) => Number.isInteger(value) && value >= 0)) {
+      throw new TypeError("2x2 counts must be non-negative integers");
+    }
+    const rowOne = a + b;
+    const rowTwo = c + d;
+    const columnOne = a + c;
+    const total = rowOne + rowTwo;
+    if (total === 0 || rowOne === 0 || rowTwo === 0 || columnOne === 0 || b + d === 0) return 1;
+
+    const logFactorial = [0];
+    for (let value = 1; value <= total; value += 1) {
+      logFactorial[value] = logFactorial[value - 1] + Math.log(value);
+    }
+    const constant = logFactorial[rowOne] + logFactorial[rowTwo]
+      + logFactorial[columnOne] + logFactorial[b + d] - logFactorial[total];
+    const logProbability = (value) => constant - logFactorial[value]
+      - logFactorial[rowOne - value] - logFactorial[columnOne - value]
+      - logFactorial[rowTwo - columnOne + value];
+
+    const lowest = Math.max(0, columnOne - rowTwo);
+    const highest = Math.min(rowOne, columnOne);
+    const observed = logProbability(a);
+    let sum = 0;
+    for (let value = lowest; value <= highest; value += 1) {
+      const current = logProbability(value);
+      // 1e-7 in log space absorbs float noise so the observed table and its
+      // mirror image are never counted inconsistently.
+      if (current <= observed + 1e-7) sum += Math.exp(current);
+    }
+    return clamp(sum, 0, 1);
+  }
+
   function binomialTwoSided(successes, trials, probability = 0.5) {
     if (!Number.isInteger(successes) || !Number.isInteger(trials)) {
       throw new TypeError("successes and trials must be integers");
@@ -338,6 +380,12 @@
     );
   }
 
+  /*
+   * `ignoreIndices` drops every window that reads one of the listed hands, not
+   * just the hand itself — a window spanning an excluded hand is contaminated by
+   * it. Used by classifyPersona to re-measure a habit on the hands where the
+   * searchlight was dark.
+   */
   function analyseSwitching(choices, options = {}) {
     const minimumOpportunities = Number.isInteger(options.minimumOpportunities)
       ? options.minimumOpportunities
@@ -346,6 +394,9 @@
       ? options.minimumEffect
       : 0.1;
     const alpha = typeof options.alpha === "number" ? options.alpha : 0.05;
+    const ignored = options.ignoreIndices instanceof Set
+      ? options.ignoreIndices
+      : new Set(Array.isArray(options.ignoreIndices) ? options.ignoreIndices : []);
     let opportunities = 0;
     let switches = 0;
 
@@ -353,6 +404,7 @@
       const previous = choices[index - 1];
       const beforePrevious = choices[index - 2];
       if (previous !== beforePrevious) continue;
+      if (ignored.has(index) || ignored.has(index - 1) || ignored.has(index - 2)) continue;
       opportunities += 1;
       if (choices[index] !== previous) switches += 1;
     }
@@ -379,6 +431,114 @@
       revealable,
       direction: effect > 0 ? "switch" : effect < 0 ? "stay" : "balanced",
     });
+  }
+
+  /*
+   * Which side the player leans toward, corrected for how sticky they are.
+   *
+   * A plain binomial test on L/R counts is invalid here: a player who tends to
+   * stay produces long same-side runs, which violates independence and inflates
+   * the apparent deviation. Untreated it labelled 48% of players who had no side
+   * preference at all. The lag-1 autocorrelation gives an effective sample size,
+   * so a player who made 100 choices but only ~14 independent decisions is
+   * tested against 14 — which drops the false positive rate back to ~4%.
+   */
+  function analyseSideBias(choices, options = {}) {
+    const minimumEffective = Number.isInteger(options.minimumEffective) ? options.minimumEffective : 20;
+    const minimumEffect = typeof options.minimumEffect === "number" ? options.minimumEffect : 0.08;
+    const alpha = typeof options.alpha === "number" ? options.alpha : 0.05;
+    const total = choices.length;
+    if (total < 4) {
+      return Object.freeze({
+        total, right: 0, rate: null, autocorrelation: 0, effectiveSamples: 0,
+        pValue: 1, revealable: false, direction: "balanced",
+      });
+    }
+
+    const values = choices.map((choice) => choice === RIGHT ? 1 : 0);
+    const right = values.reduce((sum, value) => sum + value, 0);
+    const rate = right / total;
+    let numerator = 0;
+    let denominator = 0;
+    for (let index = 0; index < total; index += 1) {
+      denominator += (values[index] - rate) ** 2;
+      if (index > 0) numerator += (values[index] - rate) * (values[index - 1] - rate);
+    }
+    const autocorrelation = denominator === 0
+      ? 0
+      : clamp(numerator / denominator, -0.95, 0.95);
+    const effectiveSamples = Math.max(4, Math.round(total * (1 - autocorrelation) / (1 + autocorrelation)));
+    const pValue = binomialTwoSided(Math.round(rate * effectiveSamples), effectiveSamples, 0.5);
+
+    return Object.freeze({
+      total,
+      right,
+      rate,
+      autocorrelation,
+      effectiveSamples,
+      pValue,
+      revealable: effectiveSamples >= minimumEffective
+        && pValue < alpha
+        && Math.abs(rate - 0.5) >= minimumEffect,
+      direction: rate > 0.5 ? "right" : rate < 0.5 ? "left" : "balanced",
+    });
+  }
+
+  function compareSwitchRates(records, splitter, options = {}) {
+    const minimumEach = Number.isInteger(options.minimumEach) ? options.minimumEach : 10;
+    const alpha = typeof options.alpha === "number" ? options.alpha : 0.05;
+    let switchedA = 0;
+    let stayedA = 0;
+    let switchedB = 0;
+    let stayedB = 0;
+
+    for (let index = 1; index < records.length; index += 1) {
+      const switched = records[index].actual !== records[index - 1].actual;
+      const inA = splitter(records[index], records[index - 1]);
+      if (inA === null) continue;
+      if (inA) {
+        if (switched) switchedA += 1; else stayedA += 1;
+      } else if (switched) switchedB += 1; else stayedB += 1;
+    }
+
+    const totalA = switchedA + stayedA;
+    const totalB = switchedB + stayedB;
+    const enough = totalA >= minimumEach && totalB >= minimumEach;
+    const pValue = enough ? fisherExactTwoSided(switchedA, stayedA, switchedB, stayedB) : 1;
+    const rateA = totalA === 0 ? null : switchedA / totalA;
+    const rateB = totalB === 0 ? null : switchedB / totalB;
+
+    return Object.freeze({
+      switchedA, totalA, rateA,
+      switchedB, totalB, rateB,
+      pValue,
+      measurable: enough,
+      revealable: enough && pValue < alpha,
+      higher: rateA === null || rateB === null ? null : rateA > rateB ? "a" : rateA < rateB ? "b" : "equal",
+    });
+  }
+
+  /*
+   * Does losing change how the player plays? Group A is the hand after being
+   * caught, group B the hand after escaping. This is the trait Shannon's eight
+   * cells are indexed by, so it is the one the machine is actually built to see.
+   */
+  function analyseFeedbackShift(records, options = {}) {
+    return compareSwitchRates(records, (_current, previous) => previous.correct === true, options);
+  }
+
+  /*
+   * Does the player act on the searchlight? Group A is the hands the machine was
+   * running on a learned cell, group B the hands it was guessing blind. A player
+   * who reads the lamp switches at a different rate under it; one who ignores it
+   * plays the same either way. Only meaningful once the lamp exists on screen.
+   */
+  function analyseLightUse(records, options = {}) {
+    return compareSwitchRates(
+      records,
+      (current) => typeof current.trained === "boolean" ? current.trained : null,
+      options,
+    );
   }
 
   function formatPValue(pValue) {
@@ -490,6 +650,134 @@
       analysis,
       serial: `MR-53-${sessionHash(choices)}`,
       previous,
+    });
+  }
+
+  /*
+   * The behavioural title, kept deliberately separate from the egg.
+   *
+   * The egg says how well the run went; this says how the player played. They
+   * are not independent — an unexamined habit usually costs games — but they are
+   * not redundant either, because the searchlight lets a player keep their habit
+   * and still win. Measured: a stayer who ignores the lamp is a 大坏蛋 85% of the
+   * time, while the same stayer reading the lamp is a 聪明蛋 94% of the time.
+   * Same title, opposite egg.
+   *
+   * Every component has to be earned by a test that can fail. A player the
+   * machine could not read gets 无名氏, which is the honest answer and, at ~92%
+   * of genuinely random players, the rarest one for anybody actually trying.
+   */
+  function classifyPersona(records, options = {}) {
+    if (!Array.isArray(records)) throw new TypeError("records must be an array");
+    const choices = records.map((record) => record.actual);
+    let habit = analyseSwitching(choices, options.switching);
+    /*
+     * A player who acts on the searchlight inverts their instinct on lit hands,
+     * which scrambles the raw stay/switch pattern: measured, only 35% of
+     * lamp-reading stayers were detectable this way, and they collapsed into the
+     * generic 掌灯人. Re-measuring on the hands where the lamp was dark recovers
+     * the underlying habit for 87% of them. It is a second look at the same data,
+     * so alpha is tightened to 0.02 — which keeps the added false-positive cost
+     * on a truly random player at 0.1 percentage points.
+     */
+    if (!habit.revealable) {
+      const litHands = [];
+      records.forEach((record, index) => {
+        if (record.trained === true) litHands.push(index);
+      });
+      if (litHands.length) {
+        const blind = analyseSwitching(choices, Object.assign({
+          minimumOpportunities: 15,
+          alpha: 0.02,
+        }, options.switching, { ignoreIndices: litHands }));
+        if (blind.revealable) habit = blind;
+      }
+    }
+    const light = analyseLightUse(records, options.light);
+    const side = analyseSideBias(choices, options.side);
+    const feedback = analyseFeedbackShift(records, options.feedback);
+
+    const axes = [];
+    // Every axis is reported, lit or not. Showing the four that were tried makes
+    // the card comparable between two people — same rows, different ones lit —
+    // and stops a single finding from looking like the whole story.
+    const PENDING = Object.freeze({
+      habit: "留还是换",
+      light: "灯亮时的打法",
+      feedback: "输赢的影响",
+      side: "左右偏好",
+    });
+    const add = (key, headline, detail) => axes.push(Object.freeze({ key, headline, detail }));
+
+    if (habit.revealable) {
+      const stays = habit.direction === "stay";
+      const percent = Math.round((stays ? 1 - habit.switchRate : habit.switchRate) * 100);
+      add(
+        "habit",
+        stays ? "连续两次同边之后，你倾向继续留着" : "连续两次同边之后，你倾向换边",
+        `${percent}% · ${habit.opportunities} 次检验 · ${formatPValue(habit.pValue)}`,
+      );
+    }
+    if (light.revealable) {
+      add(
+        "light",
+        "灯亮的时候，你会换一种打法",
+        `亮灯换边 ${Math.round(light.rateA * 100)}% · 灯暗 ${Math.round(light.rateB * 100)}% · ${formatPValue(light.pValue)}`,
+      );
+    }
+    if (feedback.revealable) {
+      add(
+        "feedback",
+        feedback.higher === "a" ? "被抓之后，你更容易改主意" : "被抓之后，你反而更沉得住气",
+        `被抓后换边 ${Math.round(feedback.rateA * 100)}% · 躲开后 ${Math.round(feedback.rateB * 100)}% · ${formatPValue(feedback.pValue)}`,
+      );
+    }
+    if (side.revealable) {
+      add(
+        "side",
+        side.direction === "left" ? "你偏爱左舷" : "你偏爱右舷",
+        `${Math.round((side.direction === "left" ? 1 - side.rate : side.rate) * 100)}% · 折算 ${side.effectiveSamples} 次独立决定 · ${formatPValue(side.pValue)}`,
+      );
+    }
+
+    const prefix = light.revealable
+      ? "读灯的"
+      : feedback.revealable
+        ? (feedback.higher === "a" ? "惊弓的" : "逆骨的")
+        : "";
+    const suffix = side.revealable ? (side.direction === "left" ? " · 左舵" : " · 右舵") : "";
+
+    const unmeasured = Object.freeze(Object.keys(PENDING)
+      .filter((key) => !axes.some((axis) => axis.key === key))
+      .map((key) => Object.freeze({ key, label: PENDING[key] })));
+
+    let base;
+    if (habit.revealable) base = habit.direction === "stay" ? "钉子户" : "节拍器";
+    else if (light.revealable) base = "掌灯人";
+    else if (feedback.revealable) base = feedback.higher === "a" ? "惊弓之鸟" : "逆骨";
+    else if (side.revealable) base = side.direction === "left" ? "左舵党" : "右舵党";
+    else return Object.freeze({
+      name: "无名氏",
+      base: "无名氏",
+      measured: 0,
+      axes: Object.freeze([]),
+      unmeasured,
+      unread: true,
+      summary: "四项检验都没能锁定你的规律。",
+    });
+
+    // The prefix already carries the light or feedback axis; do not repeat it in
+    // the base, or a reader becomes a "读灯的掌灯人".
+    const name = `${base === "掌灯人" || base === "惊弓之鸟" || base === "逆骨" ? "" : prefix}${base}${suffix}`;
+
+    return Object.freeze({
+      name,
+      base,
+      measured: axes.length,
+      axes: Object.freeze(axes),
+      unmeasured,
+      unread: false,
+      summary: `${axes.length} 项检验读到了你。`,
     });
   }
 
@@ -684,8 +972,13 @@
     createShannonPredictor,
     summariseShannonVisits,
     binomialTwoSided,
+    fisherExactTwoSided,
     analyseSwitching,
+    analyseSideBias,
+    analyseFeedbackShift,
+    analyseLightUse,
     formatTellReport,
+    classifyPersona,
     classifyResult,
     classifyEggScore,
     classifyTreasure,
