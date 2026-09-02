@@ -209,6 +209,30 @@ test("the 小红书 upload record matches the built artifact", (t) => {
   assert.equal(zip.length, artifact.bytes, "the archive on disk no longer matches its record");
 });
 
+/*
+ * Both READMEs point a sceptical reader at one specific line to check the
+ * "the machine bets first" claim for themselves. A line number in prose rots
+ * the moment anyone edits above it, so it is pinned here.
+ */
+test("the READMEs cite the right line for the sealed-prediction test", () => {
+  const engineTest = fs.readFileSync(path.join(root, "tests/engine.test.cjs"), "utf8").split("\n");
+  const cited = [
+    { file: "README.md", pattern: /tests\/engine\.test\.cjs` 第 (\d+) 行/ },
+    { file: "README.en.md", pattern: /tests\/engine\.test\.cjs:(\d+)`/ },
+  ];
+  cited.forEach(({ file, pattern }) => {
+    const readme = fs.readFileSync(path.join(root, file), "utf8");
+    const match = readme.match(pattern);
+    assert.ok(match, `${file} must cite the sealed-prediction test`);
+    const line = engineTest[Number(match[1]) - 1] || "";
+    assert.match(
+      line,
+      /a prediction is committed before the choice is observed/,
+      `${file} cites line ${match[1]}, which is now: ${line.trim()}`,
+    );
+  });
+});
+
 test("shipped source carries no stray non-CJK scripts", () => {
   // A colour literal once picked up an Arabic letter from a bad paste and still
   // parsed. Text is either ASCII, CJK, or the punctuation this project uses.

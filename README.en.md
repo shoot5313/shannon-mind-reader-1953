@@ -4,13 +4,17 @@
 
 > The machine has already placed its bet. Your turn to fool it.
 
-A browser game where eight relay memory cells chase you down.
+A mind-reading machine from 1953, moved into a browser. No parameters, no training data, no network calls. Its entire memory is 16 bits.
+
+Before each hand it bets on left or right. The bet is locked. Then you move.
 
 [Play it now →](https://shoot5313.github.io/shannon-mind-reader-1953/)
 
 [![Gameplay: the lighthouse says whether the machine is sure, you pick a lane, then the beam reveals its bet](./assets/gameplay.gif)](https://shoot5313.github.io/shannon-mind-reader-1953/)
 
 No sign-in, works offline. Your callsign, your choices and your result cards never leave the browser.
+
+How the machine got tuned, what was tried, what got cut, and where every number came from: [DESIGN.md](./DESIGN.md).
 
 ## It starts in 1953
 
@@ -21,6 +25,8 @@ The first line hands the credit to his colleague David W. Hagelbarger: Shannon's
 The question mark in the title is honest. Of course it does not read minds. It just remembers patterns more patiently than a person does.
 
 The rule that makes the whole thing work: **the machine has to bet first.** Every guess is sealed before you press left or right, and both are revealed together afterwards. When it catches you, it did not change its answer after the fact. When you fool it, you really did fool it.
+
+You do not have to take my word for it. The test at `tests/engine.test.cjs:43` pins it down: it asks for the prediction twice to confirm it is the same object, then deliberately plays the opposite side and asserts the machine recorded the bet it originally made. Ten seconds with `npm test` and you can check yourself.
 
 We put that machine in a browser and gave it a strait with a searchlight, a treasure map, and a slightly obnoxious "Shannon-Certified Smart Egg."
 
@@ -60,6 +66,8 @@ You can go straight at the machine from the `CASE 8` staff entrance in the lobby
 The result also tells you which of the eight cells read you most easily. That is your own transparency, not what the cell remembered.
 
 ## Eight cells, sixteen bits
+
+![Eight memory cells, two bits each, 16 bits in total; the interface shows exactly half](./assets/eight-cells.en.svg)
 
 <details>
 <summary>What is actually stored (play a run first)</summary>

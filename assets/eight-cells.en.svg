@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 400" width="880" height="400" role="img" aria-label="Eight memory cells, two bits each, 16 bits in total. The interface shows exactly half.">
+  <rect width="880" height="400" fill="#061923"/>
+  <g stroke="rgba(118,247,176,0.06)" stroke-width="1">
+    <path d="M0 54h880M0 108h880M0 162h880M0 216h880M0 270h880M0 324h880M0 378h880"/>
+    <path d="M54 0v400M108 0v400M162 0v400M216 0v400M270 0v400M324 0v400M378 0v400M432 0v400M486 0v400M540 0v400M594 0v400M648 0v400M702 0v400M756 0v400M810 0v400M864 0v400"/>
+  </g>
+
+  <text x="44" y="52" fill="#76f7b0" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="17" font-weight="700" letter-spacing="1.6">MEMORY RELAY BANK</text>
+  <text x="836" y="52" fill="#f0aa3d" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="17" font-weight="700" text-anchor="end">8 &#215; 2 bit = 16 bit</text>
+  <path d="M44 66h792" stroke="#4f9f78" stroke-width="2"/>
+
+  <!-- eight cells, one per recent situation -->
+  <g font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="18" font-weight="700">
+    <g>
+      <rect x="44" y="92" width="186" height="66" fill="rgba(4,20,27,0.8)" stroke="#f0aa3d" stroke-width="2"/>
+      <circle cx="66" cy="125" r="7" fill="#f0aa3d"/>
+      <text x="84" y="132" fill="#f4dcae">L&#183;D&#183;L</text>
+      <text x="212" y="132" fill="#f0aa3d" font-family="ui-monospace,monospace" font-size="13" text-anchor="end">ARMED</text>
+    </g>
+    <g fill="#c3d2ca">
+      <rect x="248" y="92" width="186" height="66" fill="rgba(4,20,27,0.55)" stroke="rgba(111,153,145,0.45)" stroke-width="2"/>
+      <circle cx="270" cy="125" r="7" fill="none" stroke="#6c8079" stroke-width="2"/>
+      <text x="288" y="132">L&#183;S&#183;W</text>
+      <rect x="452" y="92" width="186" height="66" fill="rgba(4,20,27,0.55)" stroke="rgba(111,153,145,0.45)" stroke-width="2"/>
+      <circle cx="474" cy="125" r="7" fill="none" stroke="#6c8079" stroke-width="2"/>
+      <text x="492" y="132">W&#183;D&#183;L</text>
+      <rect x="656" y="92" width="180" height="66" fill="rgba(4,20,27,0.55)" stroke="rgba(111,153,145,0.45)" stroke-width="2"/>
+      <circle cx="678" cy="125" r="7" fill="none" stroke="#6c8079" stroke-width="2"/>
+      <text x="696" y="132">W&#183;S&#183;W</text>
+      <rect x="44" y="172" width="186" height="66" fill="rgba(4,20,27,0.55)" stroke="rgba(111,153,145,0.45)" stroke-width="2"/>
+      <circle cx="66" cy="205" r="7" fill="none" stroke="#6c8079" stroke-width="2"/>
+      <text x="84" y="212">L&#183;D&#183;W</text>
+      <rect x="248" y="172" width="186" height="66" fill="rgba(4,20,27,0.55)" stroke="rgba(111,153,145,0.45)" stroke-width="2"/>
+      <circle cx="270" cy="205" r="7" fill="none" stroke="#6c8079" stroke-width="2"/>
+      <text x="288" y="212">L&#183;S&#183;L</text>
+      <rect x="452" y="172" width="186" height="66" fill="rgba(4,20,27,0.55)" stroke="rgba(111,153,145,0.45)" stroke-width="2"/>
+      <circle cx="474" cy="205" r="7" fill="none" stroke="#6c8079" stroke-width="2"/>
+      <text x="492" y="212">W&#183;D&#183;W</text>
+      <rect x="656" y="172" width="180" height="66" fill="rgba(4,20,27,0.55)" stroke="rgba(111,153,145,0.45)" stroke-width="2"/>
+      <circle cx="678" cy="205" r="7" fill="none" stroke="#6c8079" stroke-width="2"/>
+      <text x="696" y="212">W&#183;S&#183;L</text>
+    </g>
+  </g>
+
+  <text x="44" y="270" fill="#9db5ad" font-family="ui-monospace,monospace" font-size="13">
+    Eight recent situations: [lost/won] &#183; [stayed/switched] &#183; [lost/won]. One opens per hand.
+  </text>
+
+  <!-- one cell, expanded -->
+  <path d="M44 292h792" stroke="rgba(118,247,176,0.28)" stroke-width="2"/>
+  <text x="44" y="322" fill="#f0aa3d" font-family="ui-monospace,monospace" font-size="14" font-weight="700">2 bits per cell</text>
+
+  <g font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="13">
+    <rect x="176" y="302" width="330" height="62" fill="rgba(20,14,4,0.5)" stroke="#f0aa3d" stroke-width="2" stroke-dasharray="7 5"/>
+    <text x="192" y="326" fill="#f4dcae" font-weight="700">bit 1 &#183; your reaction: stay or switch</text>
+    <text x="192" y="350" fill="#d74739">Sealed. Never shown.</text>
+
+    <rect x="526" y="302" width="310" height="62" fill="rgba(5,29,31,0.6)" stroke="#76f7b0" stroke-width="2"/>
+    <text x="542" y="326" fill="#d7e1db" font-weight="700">bit 2 &#183; has it repeated yet</text>
+    <text x="542" y="350" fill="#76f7b0">Shown. Lit means it will use it.</text>
+  </g>
+</svg>
