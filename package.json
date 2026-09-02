@@ -2,7 +2,23 @@
   "name": "mind-reader-1953",
   "version": "1.1.0",
   "private": true,
+  "license": "MIT",
   "description": "挑战一台会学习你的机器，赢走宝藏与聪明蛋战报。",
+  "homepage": "https://shoot5313.github.io/shannon-mind-reader-1953/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shoot5313/shannon-mind-reader-1953.git"
+  },
+  "keywords": [
+    "shannon",
+    "mind-reader",
+    "game",
+    "information-theory",
+    "1953",
+    "bell-labs",
+    "no-dependencies",
+    "offline"
+  ],
   "scripts": {
     "test": "node --test tests/*.test.cjs",
     "test:ux": "node tests/feedback-persistence.browser.cjs",
