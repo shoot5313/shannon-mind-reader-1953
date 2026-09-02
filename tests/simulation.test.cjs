@@ -224,20 +224,23 @@ test("reading the searchlight beats flipping a coin, and ignoring it loses to on
 
 
 /*
- * The persona is a claim about a person, so every axis must stay honest on
- * someone who has no pattern at all. Each test is nominally 5%; the bands allow
- * for sampling noise at 1500 runs.
+ * The persona names everyone on purpose — the name and the figures describe the
+ * run that was played, which is true whatever the statistics say. What must stay
+ * honest is the seal, which claims something about the player rather than the
+ * session. So the guarantee this file defends moved: not "a pattern-free player
+ * gets no name", but "a pattern-free player earns no seal".
  *
  * The side-bias axis is the one that needs watching. A plain binomial on L/R
- * counts labelled 48% of pattern-free-but-sticky players as left- or
- * right-handed, because long same-side runs break the independence the test
- * assumes. analyseSideBias corrects by effective sample size; if that correction
- * is ever weakened, the sticky case below is what will catch it.
+ * counts sealed 48% of players who had no side preference at all, because long
+ * same-side runs break the independence the test assumes. analyseSideBias
+ * corrects by effective sample size; if that is ever weakened, the sticky case
+ * below is what will catch it.
  */
-test("a player with no pattern is not given a personality", () => {
+test("a player with no pattern earns no seal, however they are named", () => {
   const sessions = 1500;
-  const fired = { habit: 0, side: 0, light: 0, feedback: 0, named: 0 };
-  const stickyFired = { side: 0 };
+  const sealed = { habit: 0, side: 0, light: 0, feedback: 0, any: 0 };
+  const named = { count: 0 };
+  let stickySideSealed = 0;
 
   for (let seed = 1; seed <= sessions; seed += 1) {
     const random = linearRandom(seed * 7919);
@@ -248,11 +251,13 @@ test("a player with no pattern is not given a personality", () => {
       records.push(predictor.observe(random() < 0.5 ? LEFT : RIGHT));
     }
     const choices = records.map((record) => record.actual);
-    if (analyseSwitching(choices).revealable) fired.habit += 1;
-    if (analyseSideBias(choices).revealable) fired.side += 1;
-    if (analyseLightUse(records).revealable) fired.light += 1;
-    if (analyseFeedbackShift(records).revealable) fired.feedback += 1;
-    if (!classifyPersona(records).unread) fired.named += 1;
+    if (analyseSwitching(choices).revealable) sealed.habit += 1;
+    if (analyseSideBias(choices).revealable) sealed.side += 1;
+    if (analyseLightUse(records).revealable) sealed.light += 1;
+    if (analyseFeedbackShift(records).revealable) sealed.feedback += 1;
+    const persona = classifyPersona(records);
+    if (persona.sealed > 0) sealed.any += 1;
+    if (!persona.unread) named.count += 1;
 
     // Same absence of side preference, but played stickily.
     const stickyRandom = linearRandom(seed * 104729);
@@ -264,7 +269,7 @@ test("a player with no pattern is not given a personality", () => {
       sticky.observe(current);
       stickyChoices.push(current);
     }
-    if (analyseSideBias(stickyChoices).revealable) stickyFired.side += 1;
+    if (analyseSideBias(stickyChoices).revealable) stickySideSealed += 1;
   }
 
   const rate = (count) => count / sessions;
@@ -272,17 +277,23 @@ test("a player with no pattern is not given a personality", () => {
 
   ["habit", "side", "light", "feedback"].forEach((axis) => {
     assert.ok(
-      rate(fired[axis]) < 0.09,
-      `${axis} fired on ${pct(fired[axis])} of pattern-free players (nominal 5%)`,
+      rate(sealed[axis]) < 0.09,
+      `${axis} sealed ${pct(sealed[axis])} of pattern-free players (nominal 5%)`,
     );
   });
   assert.ok(
-    rate(stickyFired.side) < 0.09,
-    `side bias fired on ${pct(stickyFired.side)} of sticky players with no side preference`,
+    rate(stickySideSealed) < 0.09,
+    `side bias sealed ${pct(stickySideSealed)} of sticky players with no side preference`,
   );
-  // Four independent 5% tests, so roughly one run in five earns some name.
+  // Four independent 5% tests, so about one run in five picks up some seal.
   assert.ok(
-    rate(fired.named) < 0.3,
-    `${pct(fired.named)} of pattern-free players were given a persona`,
+    rate(sealed.any) < 0.25,
+    `${pct(sealed.any)} of pattern-free players collected a seal`,
+  );
+  // Being named is not a claim, so it should happen to nearly everyone. If this
+  // ever drops, casual players are being handed 无名氏 again.
+  assert.ok(
+    rate(named.count) > 0.9,
+    `only ${pct(named.count)} of players were named at all`,
   );
 });

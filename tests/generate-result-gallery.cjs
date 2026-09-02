@@ -401,9 +401,8 @@ async function saveShareCard(sessionId, target, personaTarget) {
       if (!personaTab) { reject(new Error("persona tab missing")); return; }
       var card = document.querySelector(".persona-card");
       result.personaName = card ? card.querySelector(".persona-name").textContent.trim() : null;
-      result.personaMeasured = card
-        ? card.querySelectorAll(".persona-axes li:not(.is-unmeasured)").length
-        : null;
+      result.personaSealed = card ? card.querySelectorAll(".persona-axes li.is-sealed").length : null;
+      result.personaMeasured = card ? card.querySelectorAll(".persona-axes li").length : null;
       result.personaRows = card ? card.querySelectorAll(".persona-axes li").length : null;
       personaTab.click();
       setTimeout(function() {
@@ -429,7 +428,13 @@ async function saveShareCard(sessionId, target, personaTarget) {
     "persona tab returned the result card",
   );
   assert.ok(payload.personaName, "persona card has no name");
-  assert.equal(payload.personaRows, 4, "the persona must report all four axes");
+  // Axes appear when the run has the samples for them, so a short or lopsided
+  // ending legitimately reports fewer than four — the 19-hand capture has two,
+  // and a 0:64 sweep has no escaped hands to compare against.
+  assert.ok(
+    payload.personaRows >= 1 && payload.personaRows <= 4,
+    `persona reported ${payload.personaRows} axes`,
+  );
 
   await writeFile(target, png);
   await writeFile(personaTarget, personaPng);
@@ -442,6 +447,7 @@ async function saveShareCard(sessionId, target, personaTarget) {
     personaSha256: crypto.createHash("sha256").update(personaPng).digest("hex"),
     personaName: payload.personaName,
     personaMeasured: payload.personaMeasured,
+    personaSealed: payload.personaSealed,
   };
 }
 
@@ -511,7 +517,7 @@ function galleryHtml(results) {
       </div>` : ""}
       <dl>
         <div><dt>结果</dt><dd>${escapeHtml(result.actualLabel || result.actualOutcome || "—")}</dd></div>
-        <div><dt>称号</dt><dd>${escapeHtml(result.personaName || "—")}${result.personaMeasured === undefined ? "" : ` · ${result.personaMeasured}/4`}</dd></div>
+        <div><dt>称号</dt><dd>${escapeHtml(result.personaName || "—")}${result.personaSealed === undefined ? "" : ` · ${result.personaSealed} 项核验`}</dd></div>
         <div><dt>文案</dt><dd>${escapeHtml(result.actualGreeting || result.error || "—")}</dd></div>
         ${result.score ? `<div><dt>比分</dt><dd>${escapeHtml(result.score)}</dd></div>` : ""}
         ${result.pass ? `<div><dt>PNG</dt><dd>${result.width}×${result.height} · ${Math.round(result.bytes / 1024)} KB</dd></div>` : ""}
@@ -671,7 +677,7 @@ async function main() {
     result.actualLabel || result.actualOutcome || "—",
     result.score || "—",
     result.actualGreeting || result.error || "—",
-    result.personaName ? `${result.personaName} (${result.personaMeasured}/4)` : "—",
+    result.personaName ? `${result.personaName} · ${result.personaSealed} 章` : "—",
     result.card || "—",
     result.persona || "—",
   ].map(markdownCell).join(" | "));
@@ -687,10 +693,11 @@ async function main() {
     `- 43:21 与 21:43 恰好 2:1，正好触发隐藏成就；42:22 与 22:42 不触发\n` +
     `- 49:15 的 100% 聪明蛋，以及 15:49 的 100% 大坏蛋\n` +
     `- 0:64 极端大坏蛋\n- 100 海里宝藏与第 19 海里最早截获路径\n` +
-    `- 行为称号卡的全部版式：${[4, 3, 2, 1, 0]
-      .filter((count) => results.some((result) => result.personaMeasured === count))
-      .map((count) => `${count}/4`)
-      .join(" · ")} 项读到\n` +
+    `- 行为称号卡的行数版式：${[...new Set(results.map((result) => result.personaMeasured))]
+      .filter((count) => Number.isInteger(count))
+      .sort((first, second) => second - first)
+      .map((count) => `${count} 行`)
+      .join(" · ")}\n` +
     `- 同一个称号出现在不同的蛋上，证明行为与结果两套标签互不绑定\n`;
 
   await writeFile(path.join(outputRoot, "manifest.json"), `${JSON.stringify({

@@ -1268,6 +1268,9 @@
 .persona-unread em { display: block; margin-top: 4px; color: #a9977a; font-style: normal; }
 .persona-card.is-unread { border-color: rgba(118, 247, 176, 0.4); background: rgba(5, 25, 30, 0.6); }
 .persona-card.is-unread .persona-name { color: var(--duel-green); }
+.axis-seal { margin-left: 8px; padding: 1px 6px; border: 1px solid var(--signal); color: var(--signal); font: var(--type-micro) ui-monospace, monospace; font-style: normal; white-space: nowrap; }
+.persona-axes li.is-sealed strong { color: #f4dcae; }
+.persona-axes li:not(.is-sealed) strong { color: #c3d2ca; }
 .persona-card.is-unread .persona-eyebrow,
 .persona-card.is-unread .persona-meta { color: #8da49b; }
 

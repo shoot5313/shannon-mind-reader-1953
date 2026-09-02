@@ -142,41 +142,56 @@ test("the feedback and searchlight axes compare two conditional switch rates", (
   assert.equal(analyseLightUse(noLamp).measurable, false);
 });
 
-test("the persona names behaviour, stays separate from the egg, and can decline to answer", () => {
-  // Too little to read: the honest answer is a name, not a guess. (That a
-  // *pattern-free* run also goes unread is a statistical claim, so it is
-  // measured over thousands of runs in tests/simulation.test.cjs instead —
-  // any short hand-written sequence is periodic, and this machine reads
-  // periodicity for a living.)
-  const thin = Array.from({ length: 12 }, (_, index) => ({
-    actual: index % 2 ? LEFT : RIGHT,
-    correct: index % 3 === 0,
-    trained: index % 2 === 0,
-  }));
-  const unread = classifyPersona(thin);
-  assert.equal(unread.unread, true);
-  assert.equal(unread.name, "无名氏");
-  assert.equal(unread.measured, 0);
-  assert.deepEqual(unread.axes, []);
-
-  // A committed stayer earns the stayer's name and one piece of evidence.
+/*
+ * The persona is entertainment, and it is built so that being fun costs nothing
+ * in honesty: the name and the numbers describe the run that was played, which
+ * needs no test to be true, while the seal infers something about the player and
+ * still requires p < 0.05.
+ */
+test("the persona describes the run for everyone and seals only what is significant", () => {
+  // A committed stayer: named, and the lean is strong enough to be sealed.
   const stayer = Array.from({ length: 90 }, (_, index) => ({
-    actual: index < 45 ? LEFT : RIGHT,
+    actual: index % 10 < 8 ? LEFT : RIGHT,
     correct: index % 4 === 0,
-    trained: false,
+    trained: index % 3 === 0,
   }));
   const nail = classifyPersona(stayer);
-  assert.equal(nail.base, "钉子户");
-  assert.ok(nail.measured >= 1);
-  assert.ok(nail.axes.some((axis) => axis.key === "habit"));
-  // Every axis has to show its working.
+  assert.equal(nail.unread, false);
+  assert.ok(nail.name.length > 0);
+  assert.ok(nail.sealed >= 1, "a strong, consistent lean should earn a seal");
+
+  // Every axis on show reports the run in figures and carries its own p-value,
+  // sealed or not — there is no "we found nothing" row any more.
+  assert.ok(nail.axes.length >= 1);
   nail.axes.forEach((axis) => {
-    assert.ok(axis.headline.length > 0);
-    assert.match(axis.detail, /p (<|=)/);
+    assert.match(axis.headline, /\d+%/, `axis ${axis.key} must quote the run's own figure`);
+    assert.equal(typeof axis.sealed, "boolean");
+    // A p-value appears exactly where a claim is being made.
+    if (axis.sealed) assert.match(axis.detail, /p (<|=)/);
+    else assert.doesNotMatch(axis.detail, /p (<|=)/);
+    assert.ok(axis.effect >= 0);
+  });
+  // Axes are ordered by how pronounced they were, so the name matches the top row.
+  const effects = nail.axes.map((axis) => axis.effect);
+  assert.deepEqual(effects, effects.slice().sort((a, b) => b - a));
+
+  // A seal is never claimed without significance, and never withheld with it.
+  nail.axes.forEach((axis) => {
+    assert.equal(axis.sealed, axis.pValue < 0.05, `axis ${axis.key} seal disagrees with its p-value`);
   });
 
-  // The persona must never mention the egg, and the egg never the persona:
-  // one describes how the run was played, the other how it came out.
+  // Perfectly flat play is the one case with nothing to describe.
+  const flat = Array.from({ length: 40 }, (_, index) => ({
+    actual: index % 2 ? LEFT : RIGHT,
+    correct: index % 2 === 0,
+    trained: index % 2 === 0,
+  }));
+  const flatPersona = classifyPersona(flat, { minimumLean: 0.49 });
+  assert.equal(flatPersona.unread, true);
+  assert.equal(flatPersona.name, "无名氏");
+
+  // The persona must never mention the egg, and vice versa: one describes how
+  // the run was played, the other how it came out.
   assert.doesNotMatch(nail.name, /蛋/);
   assert.doesNotMatch(nail.axes.map((axis) => axis.headline).join(""), /蛋/);
 });

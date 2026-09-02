@@ -656,128 +656,125 @@
   /*
    * The behavioural title, kept deliberately separate from the egg.
    *
-   * The egg says how well the run went; this says how the player played. They
-   * are not independent — an unexamined habit usually costs games — but they are
-   * not redundant either, because the searchlight lets a player keep their habit
-   * and still win. Measured: a stayer who ignores the lamp is a 大坏蛋 85% of the
-   * time, while the same stayer reading the lamp is a 聪明蛋 94% of the time.
-   * Same title, opposite egg.
+   * This is entertainment, not a personality instrument, and it is built so that
+   * being fun costs nothing in honesty. The trick is what each part claims:
    *
-   * Every component has to be earned by a test that can fail. A player the
-   * machine could not read gets 无名氏, which is the honest answer and, at ~92%
-   * of genuinely random players, the rarest one for anybody actually trying.
+   *   - The name and the numbers DESCRIBE THIS RUN. "You stayed 62% of the time"
+   *     is simply what happened across these hands; it needs no test to be true,
+   *     so everybody gets a title and a card with real figures on it.
+   *   - The seal INFERS SOMETHING ABOUT THE PLAYER. That still requires p < 0.05,
+   *     and it is a bonus stamp rather than the gate for getting a name.
+   *
+   * The earlier version gated the name on significance, which measured correctly
+   * but played badly: a casual player with a mild 62% lean is under the
+   * resolution of 64 hands, so 72% of them were handed 无名氏 — including two
+   * playtesters in a row. The statistics were right and the product was wrong.
+   *
+   * The egg still says how the run came out; this says how it was played.
    */
   function classifyPersona(records, options = {}) {
     if (!Array.isArray(records)) throw new TypeError("records must be an array");
+    const minimumLean = typeof options.minimumLean === "number" ? options.minimumLean : 0.04;
     const choices = records.map((record) => record.actual);
-    let habit = analyseSwitching(choices, options.switching);
-    /*
-     * A player who acts on the searchlight inverts their instinct on lit hands,
-     * which scrambles the raw stay/switch pattern: measured, only 35% of
-     * lamp-reading stayers were detectable this way, and they collapsed into the
-     * generic 掌灯人. Re-measuring on the hands where the lamp was dark recovers
-     * the underlying habit for 87% of them. It is a second look at the same data,
-     * so alpha is tightened to 0.02 — which keeps the added false-positive cost
-     * on a truly random player at 0.1 percentage points.
-     */
-    if (!habit.revealable) {
-      const litHands = [];
-      records.forEach((record, index) => {
-        if (record.trained === true) litHands.push(index);
-      });
-      if (litHands.length) {
-        const blind = analyseSwitching(choices, Object.assign({
-          minimumOpportunities: 15,
-          alpha: 0.02,
-        }, options.switching, { ignoreIndices: litHands }));
-        if (blind.revealable) habit = blind;
-      }
-    }
+    const habit = analyseSwitching(choices, options.switching);
     const light = analyseLightUse(records, options.light);
     const side = analyseSideBias(choices, options.side);
     const feedback = analyseFeedbackShift(records, options.feedback);
 
     const axes = [];
-    // Every axis is reported, lit or not. Showing the four that were tried makes
-    // the card comparable between two people — same rows, different ones lit —
-    // and stops a single finding from looking like the whole story.
-    const PENDING = Object.freeze({
-      habit: "留还是换",
-      light: "灯亮时的打法",
-      feedback: "输赢的影响",
-      side: "左右偏好",
-    });
-    const add = (key, headline, detail) => axes.push(Object.freeze({ key, headline, detail }));
+    // A p-value is only shown where it means something. On an unsealed row it is
+    // the statistic for a claim the machine is not making, and "p = 1" reads to a
+    // player as a broken number rather than as honest uncertainty.
+    const add = (key, ready, effect, pValue, direction, headline, context) => {
+      if (!ready) return;
+      const sealed = pValue < 0.05;
+      axes.push(Object.freeze({
+        key, effect, pValue, direction, headline, sealed,
+        detail: sealed ? `${context} · ${formatPValue(pValue)}` : context,
+      }));
+    };
 
-    if (habit.revealable) {
-      const stays = habit.direction === "stay";
+    if (habit.switchRate !== null && habit.opportunities >= 8) {
+      const stays = habit.switchRate < 0.5;
       const percent = Math.round((stays ? 1 - habit.switchRate : habit.switchRate) * 100);
       add(
-        "habit",
-        stays ? "连续两次同边之后，你倾向继续留着" : "连续两次同边之后，你倾向换边",
-        `${percent}% · ${habit.opportunities} 次检验 · ${formatPValue(habit.pValue)}`,
+        "habit", true, Math.abs(habit.switchRate - 0.5), habit.pValue, stays ? "stay" : "switch",
+        `连续两次同边之后，你${stays ? "继续留着" : "换边"} ${percent}%`,
+        `${habit.opportunities} 次机会`,
       );
     }
-    if (light.revealable) {
+    if (light.measurable) {
       add(
-        "light",
-        "灯亮的时候，你会换一种打法",
-        `亮灯换边 ${Math.round(light.rateA * 100)}% · 灯暗 ${Math.round(light.rateB * 100)}% · ${formatPValue(light.pValue)}`,
+        "light", true, Math.abs(light.rateA - light.rateB) / 2, light.pValue,
+        light.rateA > light.rateB ? "more" : "less",
+        `灯亮时你换边 ${Math.round(light.rateA * 100)}%，灯暗时 ${Math.round(light.rateB * 100)}%`,
+        `${light.totalA} 手亮灯 / ${light.totalB} 手灯暗`,
       );
     }
-    if (feedback.revealable) {
+    if (feedback.measurable) {
       add(
-        "feedback",
-        feedback.higher === "a" ? "被抓之后，你更容易改主意" : "被抓之后，你反而更沉得住气",
-        `被抓后换边 ${Math.round(feedback.rateA * 100)}% · 躲开后 ${Math.round(feedback.rateB * 100)}% · ${formatPValue(feedback.pValue)}`,
+        "feedback", true, Math.abs(feedback.rateA - feedback.rateB) / 2, feedback.pValue,
+        feedback.rateA > feedback.rateB ? "spooked" : "steady",
+        `被抓后你换边 ${Math.round(feedback.rateA * 100)}%，躲开后 ${Math.round(feedback.rateB * 100)}%`,
+        `${feedback.totalA} 次被抓 / ${feedback.totalB} 次躲开`,
       );
     }
-    if (side.revealable) {
+    if (side.rate !== null && side.effectiveSamples >= 8) {
+      const left = side.rate < 0.5;
       add(
-        "side",
-        side.direction === "left" ? "你偏爱左舷" : "你偏爱右舷",
-        `${Math.round((side.direction === "left" ? 1 - side.rate : side.rate) * 100)}% · 折算 ${side.effectiveSamples} 次独立决定 · ${formatPValue(side.pValue)}`,
+        "side", true, Math.abs(side.rate - 0.5), side.pValue, left ? "left" : "right",
+        `你走${left ? "左" : "右"}舷 ${Math.round((left ? 1 - side.rate : side.rate) * 100)}%`,
+        `折算 ${side.effectiveSamples} 次独立决定`,
       );
     }
 
-    const prefix = light.revealable
-      ? "读灯的"
-      : feedback.revealable
-        ? (feedback.higher === "a" ? "惊弓的" : "逆骨的")
-        : "";
-    const suffix = side.revealable ? (side.direction === "left" ? " · 左舵" : " · 右舵") : "";
+    const ranked = axes.slice().sort((first, second) => second.effect - first.effect);
+    const strongest = ranked[0] || null;
+    const sealed = axes.filter((axis) => axis.sealed).length;
 
-    const unmeasured = Object.freeze(Object.keys(PENDING)
-      .filter((key) => !axes.some((axis) => axis.key === key))
-      .map((key) => Object.freeze({ key, label: PENDING[key] })));
-
-    let base;
-    if (habit.revealable) base = habit.direction === "stay" ? "钉子户" : "节拍器";
-    else if (light.revealable) base = "掌灯人";
-    else if (feedback.revealable) base = feedback.higher === "a" ? "惊弓之鸟" : "逆骨";
-    else if (side.revealable) base = side.direction === "left" ? "左舵党" : "右舵党";
-    else return Object.freeze({
-      name: "无名氏",
-      base: "无名氏",
-      measured: 0,
-      axes: Object.freeze([]),
-      unmeasured,
-      unread: true,
-      summary: "四项检验都没能锁定你的规律。",
+    const NAMES = Object.freeze({
+      habit: { stay: "钉子户", switch: "节拍器" },
+      light: { more: "掌灯人", less: "掌灯人" },
+      feedback: { spooked: "惊弓之鸟", steady: "逆骨" },
+      side: { left: "左舵党", right: "右舵党" },
     });
 
-    // The prefix already carries the light or feedback axis; do not repeat it in
-    // the base, or a reader becomes a "读灯的掌灯人".
-    const name = `${base === "掌灯人" || base === "惊弓之鸟" || base === "逆骨" ? "" : prefix}${base}${suffix}`;
+    if (!strongest || strongest.effect < minimumLean) {
+      return Object.freeze({
+        name: "无名氏",
+        base: "无名氏",
+        measured: axes.length,
+        sealed,
+        axes: Object.freeze(ranked),
+        unread: true,
+        summary: "四项都平得像抛硬币。",
+      });
+    }
+
+    const base = NAMES[strongest.key][strongest.direction];
+    // A second, clearly-present lean becomes a modifier so two players with the
+    // same headline trait still read differently.
+    const second = ranked.find((axis) => axis !== strongest && axis.effect >= minimumLean * 1.5);
+    let prefix = "";
+    let suffix = "";
+    if (second) {
+      if (second.key === "light") prefix = "读灯的";
+      else if (second.key === "feedback") prefix = second.direction === "spooked" ? "惊弓的" : "逆骨的";
+      else if (second.key === "side") suffix = second.direction === "left" ? " · 左舵" : " · 右舵";
+      else if (second.key === "habit") prefix = second.direction === "stay" ? "黏人的" : "跳脱的";
+    }
+    const duplicated = base === "掌灯人" || base === "惊弓之鸟" || base === "逆骨";
 
     return Object.freeze({
-      name,
+      name: `${duplicated && (prefix === "读灯的" || prefix.endsWith("的") && base !== "钉子户" && base !== "节拍器") ? "" : prefix}${base}${suffix}`,
       base,
       measured: axes.length,
-      axes: Object.freeze(axes),
-      unmeasured,
+      sealed,
+      axes: Object.freeze(ranked),
       unread: false,
-      summary: `${axes.length} 项检验读到了你。`,
+      summary: sealed
+        ? `${sealed} 项经机器核验。`
+        : "本局的打法记录，机器还不敢下定论。",
     });
   }
 

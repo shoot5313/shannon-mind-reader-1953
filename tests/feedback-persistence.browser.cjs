@@ -382,21 +382,23 @@ function checkPersonaReveal() {
         // A measured axis must show the statistic that earned it; an unmeasured
         // one must say so rather than being quietly dropped or dressed up.
         var rows = [].map.call(card.querySelectorAll(".persona-axes li"), function (n) {
-          return { text: n.textContent.replace(/\\s+/g, " ").trim(),
-                   measured: n.className.indexOf("is-unmeasured") < 0 };
+          return { text: n.textContent.replace(/\\s+/g, " ").trim() };
         });
-        if (rows.length !== 4) { reject(new Error("expected all four axes, got " + rows.length)); return; }
+        if (rows.length < 3) { reject(new Error("expected the run's axes, got " + rows.length)); return; }
         for (var i = 0; i < rows.length; i++) {
-          if (rows[i].measured && !/p (<|=)/.test(rows[i].text)) {
-            reject(new Error("a measured axis carried no p-value: " + rows[i].text));
+          // Every row states this run in figures; only a sealed one claims a
+          // p-value, because only a sealed one is making a claim.
+          if (!/\\d+%/.test(rows[i].text)) {
+            reject(new Error("an axis quoted no figure from the run: " + rows[i].text));
             return;
           }
-          if (!rows[i].measured && !/未测出/.test(rows[i].text)) {
-            reject(new Error("an unmeasured axis did not say so: " + rows[i].text));
+          var sealed = /已核验/.test(rows[i].text);
+          if (sealed !== /p (<|=)/.test(rows[i].text)) {
+            reject(new Error("seal and p-value disagree: " + rows[i].text));
             return;
           }
         }
-        var axes = rows.filter(function (r) { return r.measured; }).map(function (r) { return r.text; });
+        var axes = rows.map(function (r) { return r.text; });
 
         // The behavioural title and the egg are different objects and must not
         // borrow each other's language.

@@ -538,19 +538,20 @@
     const persona = Engine.classifyPersona(state.records);
     const tell = tellReport();
     const evidence = persona.axes.map((axis) => `
-      <li><strong>${escapeHtml(axis.headline)}</strong><small>${escapeHtml(axis.detail)}</small></li>
-    `).join("") + persona.unmeasured.map((axis) => `
-      <li class="is-unmeasured"><strong>${escapeHtml(axis.label)}</strong><small>未测出</small></li>
+      <li class="${axis.sealed ? "is-sealed" : ""}">
+        <strong>${escapeHtml(axis.headline)}${axis.sealed ? '<em class="axis-seal">已核验</em>' : ""}</strong>
+        <small>${escapeHtml(axis.detail)}</small>
+      </li>
     `).join("");
     return `
       <details class="persona-card ${persona.unread ? "is-unread" : ""}">
         <summary aria-label="展开本局行为称号的依据">
           <span class="persona-eyebrow">BEHAVIOURAL PROFILE</span>
           <strong class="persona-name">${escapeHtml(persona.name)}</strong>
-          <small class="persona-meta">${persona.measured} / 4 项读到 · 展开看依据</small>
+          <small class="persona-meta">${persona.sealed ? `${persona.sealed} 项经机器核验` : "本局打法记录"} · 展开看数字</small>
         </summary>
         ${persona.unread
-          ? `<p class="persona-unread">${escapeHtml(tell.report.reason === "sample" ? tell.report.detail : persona.summary)}<em>${escapeHtml(tell.report.reason === "sample" ? "手数太少，它没机会读你。" : "它没能给你归类——这一项没几个人拿得到。")}</em></p><ul class="persona-axes">${evidence}</ul>`
+          ? `<p class="persona-unread">${escapeHtml(persona.summary)}<em>${escapeHtml(tell.report.reason === "sample" ? "手数太少，它没机会读你。" : "四项都没有明显偏向——机器一无所获。")}</em></p><ul class="persona-axes">${evidence}</ul>`
           : `<ul class="persona-axes">${evidence}</ul>`}
       </details>
     `;
@@ -875,64 +876,87 @@
     context.lineWidth = 6;
     context.strokeRect(78, 185, 924, 1190);
 
+    /*
+     * The card is laid out from its content rather than from fixed marks.
+     * 63% of players light one of the four axes and 32% light two, so a fixed
+     * grid built for four rows left a single finding stranded in an empty box.
+     * Sparse cards get a bigger name — with little evidence to show, the name is
+     * the content — and the whole stack is centred so either extreme reads as a
+     * deliberate poster.
+     */
+    const rows = persona.unread ? 0 : Math.min(4, persona.axes.length);
+    const nameSize = rows <= 1 ? 132 : rows === 2 ? 116 : 96;
+    const ROW_STRIDE = 104;
+
+    // One set of offsets drives both the height measurement and the drawing, so
+    // the two can never drift apart and leave the block off-centre.
+    const CALLSIGN = 30;
+    const NAME = CALLSIGN + 40 + Math.round(nameSize * 0.78);
+    const NAME_BOTTOM = NAME + Math.round(nameSize * 0.26);
+    const COUNT = NAME_BOTTOM + 56;
+    const DIVIDER = COUNT + 34;
+    const BODY = DIVIDER + 78;
+    const bodyHeight = rows ? (rows - 1) * ROW_STRIDE + 50 : 122;
+    // Optically centred, not geometrically: a block sitting on the exact centre
+    // of a tall frame reads as low, because the eye expects content sooner
+    // after the top border.
+    const top = 185 + Math.max(0, (1190 - (BODY + bodyHeight)) * 0.42);
+
     context.textAlign = "center";
     context.fillStyle = accent;
     context.font = canvasFont(23, { mono: true, weight: 700 });
-    context.fillText(`CALLSIGN / ${nickname}`, 540, 268);
+    context.fillText(`CALLSIGN / ${nickname}`, 540, top + CALLSIGN);
 
     context.fillStyle = persona.unread ? "#76f7b0" : "#f4dcae";
-    context.font = canvasFont(96, { serif: true, weight: 700 });
-    drawWrappedText(context, persona.name, 540, 400, 880, 108, 2);
+    context.font = canvasFont(nameSize, { serif: true, weight: 700 });
+    drawWrappedText(context, persona.name, 540, top + NAME, 880, Math.round(nameSize * 1.12), 1);
 
     context.fillStyle = accent;
     context.font = canvasFont(24, { mono: true, weight: 700 });
-    context.fillText(`${persona.measured} / 4 项读到`, 540, 500);
+    context.fillText(
+      persona.sealed ? `${persona.sealed} 项经机器核验` : "本局打法记录",
+      540,
+      top + COUNT,
+    );
 
+    const dividerY = top + DIVIDER;
     context.strokeStyle = "rgba(118,247,176,0.3)";
     context.lineWidth = 2;
     context.beginPath();
-    context.moveTo(160, 552);
-    context.lineTo(920, 552);
+    context.moveTo(160, dividerY);
+    context.lineTo(920, dividerY);
     context.stroke();
 
     if (persona.unread) {
-      context.textAlign = "center";
       context.fillStyle = "#d7e1db";
       context.font = canvasFont(31, { serif: true, weight: 700 });
-      const after = drawWrappedText(context, tell.report.headline, 540, 622, 860, 44, 2);
+      const after = drawWrappedText(context, tell.report.headline, 540, top + BODY, 860, 44, 2);
       context.fillStyle = "#a8bbb1";
       context.font = canvasFont(21, { mono: true });
       drawWrappedText(context, tell.report.detail, 540, after + 20, 880, 30, 2);
     }
 
-    // All four rows, lit or not: two people can lay their cards side by side and
-    // read which rows the machine got.
-    let y = persona.unread ? 838 : 672;
-    persona.axes.forEach((axis) => {
+    /*
+     * Only the axes that fired. The "N / 4 项读到" line above already discloses
+     * that four tests ran, so listing the misses would spend most of the card
+     * saying "nothing found here" — thin for something meant to be shared. The
+     * full four-row breakdown stays on the result screen, which is where two
+     * runs actually get compared.
+     */
+    let y = top + BODY;
+    persona.axes.slice(0, 4).forEach((axis) => {
       context.textAlign = "left";
-      context.fillStyle = accent;
+      // A filled mark is a sealed axis; a hollow one is this run's figure only.
+      context.fillStyle = axis.sealed ? accent : "#4f6a62";
       context.font = canvasFont(30, { mono: true, weight: 700 });
-      context.fillText("\u25cf", 150, y);
-      context.fillStyle = "#f1e6cd";
+      context.fillText(axis.sealed ? "\u25cf" : "\u25cb", 150, y);
+      context.fillStyle = axis.sealed ? "#f1e6cd" : "#c3d2ca";
       context.font = canvasFont(31, { serif: true, weight: 700 });
       const after = drawWrappedText(context, axis.headline, 196, y, 748, 42, 2);
       context.fillStyle = "#9db5ad";
       context.font = canvasFont(21, { mono: true });
       drawWrappedText(context, axis.detail, 196, after + 8, 790, 30, 1);
-      y = after + 78;
-    });
-    persona.unmeasured.forEach((axis) => {
-      context.textAlign = "left";
-      context.fillStyle = "#3f5b54";
-      context.font = canvasFont(30, { mono: true, weight: 700 });
-      context.fillText("\u25cb", 150, y);
-      context.fillStyle = "#6f8887";
-      context.font = canvasFont(29, { serif: true, weight: 700 });
-      context.fillText(axis.label, 196, y);
-      context.fillStyle = "#4f6a62";
-      context.font = canvasFont(21, { mono: true });
-      context.fillText("未测出", 196, y + 34);
-      y += 106;
+      y = after + (ROW_STRIDE - 42);
     });
 
     context.textAlign = "left";
