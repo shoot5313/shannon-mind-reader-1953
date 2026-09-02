@@ -84,6 +84,7 @@ npm test
 - `src/two-mode-prototype.js`：海峡追逐、八格研究室与战报生成
 - `tests/`：先押后选、八格学习、隐藏档案边界与发布包回归测试
 - `experiments/tune-adventure.cjs`：难度校准。改航程长度或成就阈值之前先跑它
+- [DESIGN.md](./DESIGN.md)：这台机器是怎么调出来的——试过什么、砍掉什么、每个数字怎么来的
 
 </details>
 

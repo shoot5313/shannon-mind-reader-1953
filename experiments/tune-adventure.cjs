@@ -7,8 +7,7 @@
  * thresholds. The published rules were retuned once already after the research
  * room shrank from 150 hands to 64 without the 3:1 achievement line moving with
  * it, which left that sticker reachable in 1% of even mathematically perfect
- * runs. Every number in PROTOTYPE_NOTES rounds seven and eight comes out of
- * this file.
+ * runs. Every difficulty figure quoted in DESIGN.md comes out of this file.
  *
  * The `+读灯` strategies are the same ordinary habits playing against their own
  * instinct whenever the searchlight is lit. The gap between a habit and that

@@ -15,6 +15,9 @@ dist/
 XHS_VALIDATION.md
 scripts/build-release.sh
 
+# 内部设计笔记；对外的版本是 DESIGN.md
+PROTOTYPE_NOTES.md
+
 # Local pilot and QA artifacts
 qa/
 pilot/
