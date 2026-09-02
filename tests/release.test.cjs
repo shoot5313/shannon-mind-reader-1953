@@ -28,7 +28,7 @@ const releaseFiles = [
 test("the single entry satisfies the mini-tool container contract", () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
   const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
-  const releaseNotes = fs.readFileSync(path.join(root, "RELEASE.md"), "utf8");
+  const changelog = fs.readFileSync(path.join(root, "CHANGELOG.md"), "utf8");
 
   // package.json is the only place a version is authored; everything else is
   // checked against it, so a bump never needs this test edited.
@@ -37,12 +37,8 @@ test("the single entry satisfies the mini-tool container contract", () => {
   assert.ok(declared, "the entry must declare a version");
   assert.equal(declared[1], pkg.version, "index.html version must match package.json");
   assert.ok(
-    releaseNotes.includes(`- 版本号：\`${pkg.version}\``),
-    `RELEASE.md must carry 版本号 ${pkg.version}`,
-  );
-  assert.ok(
-    releaseNotes.includes(`dist/shannon-mind-reader-v${pkg.version}.zip`),
-    `RELEASE.md must point at the v${pkg.version} artifact`,
+    changelog.includes(`## ${pkg.version} 更新说明`),
+    `CHANGELOG.md must carry an entry for ${pkg.version}`,
   );
 
   assert.match(html, /<meta name="application-name" content="香农读心机">/);
@@ -192,12 +188,15 @@ test("release runtime is self-contained, permission-light, and below 10 MiB befo
  */
 test("the 小红书 upload record matches the built artifact", (t) => {
   const artifactPath = path.join(root, "dist", "artifact.json");
-  if (!fs.existsSync(artifactPath)) {
-    t.skip("dist/artifact.json not built yet — run npm run release");
+  const recordPath = path.join(root, "XHS_VALIDATION.md");
+  // Submission material is kept off the public repo, so a clone has neither the
+  // record nor a build. Present locally, it still has to agree with the artifact.
+  if (!fs.existsSync(recordPath) || !fs.existsSync(artifactPath)) {
+    t.skip("小红书 submission material is local-only; nothing to cross-check here");
     return;
   }
   const artifact = JSON.parse(fs.readFileSync(artifactPath, "utf8"));
-  const record = fs.readFileSync(path.join(root, "XHS_VALIDATION.md"), "utf8");
+  const record = fs.readFileSync(recordPath, "utf8");
   const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
 
   assert.equal(artifact.version, pkg.version, "artifact was built from a different version");

@@ -6,7 +6,6 @@
   "scripts": {
     "test": "node --test tests/*.test.cjs",
     "test:ux": "node tests/feedback-persistence.browser.cjs",
-    "serve": "python3 -m http.server 4173",
-    "release": "npm test && bash scripts/build-release.sh && node --test tests/release.test.cjs"
+    "serve": "python3 -m http.server 4173"
   }
 }

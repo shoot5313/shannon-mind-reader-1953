@@ -11,6 +11,10 @@ dist/
 *.xlsx
 *.csv
 
+# 小红书提交材料与打包产物：审核凭据、权限声明和上传包只在本机保留
+XHS_VALIDATION.md
+scripts/build-release.sh
+
 # Local pilot and QA artifacts
 qa/
 pilot/

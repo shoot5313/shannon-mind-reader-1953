@@ -8,6 +8,7 @@
 
 [![香农读心机首页：一台绿色的 1953 年继电器读心机](./assets/readme-hero.png)](https://shoot5313.github.io/shannon-mind-reader-1953/)
 
+小红书小工具里也有同名的《香农读心机》，审核周期较长，版本会比这里慢一些。
 
 ## 故事从 1953 年开始
 
@@ -69,14 +70,11 @@ npm run serve
 
 打开 `http://localhost:4173/`。直接打开 `index.html` 也能运行。
 
-测试与小红书发布包：
+跑测试：
 
 ```bash
 npm test
-npm run release
 ```
-
-`npm run release` 会跑测试、打包、审计并写入校验记录。生成的 ZIP 小于 10 MB、可复现（相同源码 → 相同哈希），网页版和小红书版共用同一个 `index.html`。格式、权限与校验结果见 [RELEASE.md](./RELEASE.md) 与 [XHS_VALIDATION.md](./XHS_VALIDATION.md)。
 
 <details>
 <summary>代码从哪里看</summary>
