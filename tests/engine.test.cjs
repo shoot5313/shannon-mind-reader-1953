@@ -23,7 +23,7 @@ const {
   formatEggGreeting,
   formatTreasureGreeting,
   formatAdventureLossGreeting,
-  advanceAdventureDanger,
+  advanceAdventureDanger, COLLECTION_ITEMS, COLLECTION_STORAGE_KEY, createCollectionStore, qualifyingTreasureIds,
 } = require("../src/engine.js");
 
 function opposite(choice) {
@@ -441,12 +441,16 @@ test("nickname result copy is deterministic, short, and social-card ready", () =
   assert.equal(formatTreasureGreeting("Y", classifyTreasure(2)), "Y，机器只熄灭一盏灯，继电罗盘归你。");
   assert.equal(formatTreasureGreeting("Y", classifyTreasure(3)), "Y，三盏命灯全部亮着，香农密钥归你。");
   assert.equal(
+    formatTreasureGreeting("Y", classifyTreasure(3, 0)),
+    "Y，一百海里没有一次红光锁定。问号原稿终于现身。",
+  );
+  assert.equal(
     formatAdventureLossGreeting("Y", 39),
     "Y，你在第 39 海里被香农逮住了，宝藏还在前面，不过你可以用不服气发电！",
   );
 });
 
-test("remaining lamps select three increasingly rare treasure records", () => {
+test("remaining lamps select three treasures while zero red locks reveals the fourth", () => {
   assert.deepEqual(classifyTreasure(1), {
     id: "ember-coins", archiveNumber: "01", name: "余烬金币", rarityLevel: 1, rarityLabel: "回收级",
   });
@@ -456,7 +460,130 @@ test("remaining lamps select three increasingly rare treasure records", () => {
   assert.deepEqual(classifyTreasure(3), {
     id: "shannon-key", archiveNumber: "03", name: "香农密钥", rarityLevel: 3, rarityLabel: "绝密级",
   });
+  assert.deepEqual(classifyTreasure(3, 1), {
+    id: "shannon-key", archiveNumber: "03", name: "香农密钥", rarityLevel: 3, rarityLabel: "绝密级",
+  });
+  assert.deepEqual(classifyTreasure(3, 0), {
+    id: "question-manuscript", archiveNumber: "04", name: "问号原稿", rarityLevel: 4, rarityLabel: "原典级",
+  });
   assert.throws(() => classifyTreasure(0), /1 to 3/);
+  assert.throws(() => classifyTreasure(3, -1), /non-negative integer/);
+  assert.deepEqual(qualifyingTreasureIds(1, 9), ["ember-coins"]);
+  assert.deepEqual(qualifyingTreasureIds(2, 6), ["ember-coins", "relay-compass"]);
+  assert.deepEqual(qualifyingTreasureIds(3, 1), ["ember-coins", "relay-compass", "shannon-key"]);
+  assert.deepEqual(qualifyingTreasureIds(3, 0), [
+    "ember-coins", "relay-compass", "shannon-key", "question-manuscript",
+  ]);
+  assert.deepEqual(qualifyingTreasureIds(1, 0), ["ember-coins"]);
+});
+
+test("the local cabinet stores cumulative unlocks and anonymous aggregate evidence", () => {
+  const values = new Map();
+  const storage = {
+    getItem(key) { return values.has(key) ? values.get(key) : null; },
+    setItem(key, value) { values.set(key, value); },
+    removeItem(key) { values.delete(key); },
+  };
+  const collection = createCollectionStore(storage);
+
+  assert.equal(COLLECTION_ITEMS.length, 6);
+  assert.deepEqual(collection.snapshot().unlocked, []);
+  const failed = collection.recordAdventure({ distance: 87, lives: 0, dangerHits: 14 });
+  assert.deepEqual(failed.newUnlocks, []);
+  assert.deepEqual(failed.improvements, [{ key: "furthestMile", previous: 0, value: 87 }]);
+
+  const threeLamps = collection.recordAdventure({ distance: 100, lives: 3, dangerHits: 8 });
+  assert.deepEqual(threeLamps.newUnlocks, ["ember-coins", "relay-compass", "shannon-key"]);
+  assert.equal(threeLamps.snapshot.items.find((item) => item.id === "question-manuscript").response.level, 2);
+  assert.equal(threeLamps.snapshot.items.find((item) => item.id === "question-manuscript").response.label, "信号正在成形");
+
+  const manuscriptProbe = createCollectionStore(null).recordAdventure({ distance: 100, lives: 1, dangerHits: 13 });
+  assert.equal(manuscriptProbe.snapshot.items.find((item) => item.id === "question-manuscript").response.level, 1);
+
+  const nearOriginal = collection.recordAdventure({ distance: 100, lives: 3, dangerHits: 1 });
+  assert.deepEqual(nearOriginal.newUnlocks, []);
+  assert.equal(nearOriginal.snapshot.items.find((item) => item.id === "question-manuscript").response.level, 3);
+  assert.ok(nearOriginal.responseChanges.some((change) => change.id === "question-manuscript" && change.to === 3));
+
+  const original = collection.recordAdventure({ distance: 100, lives: 3, dangerHits: 0 });
+  assert.deepEqual(original.newUnlocks, ["question-manuscript"]);
+  assert.equal(original.snapshot.records.perfectVoyages, 1);
+
+  assert.equal(collection.recordDuel({ playerWins: 33, machineWins: 31 }).snapshot.items
+    .find((item) => item.id === "shannon-breaker").response.level, 1);
+  assert.equal(collection.recordDuel({ playerWins: 38, machineWins: 26 }).snapshot.items
+    .find((item) => item.id === "shannon-breaker").response.level, 2);
+  assert.equal(collection.recordDuel({ playerWins: 42, machineWins: 22 }).snapshot.items
+    .find((item) => item.id === "shannon-breaker").response.level, 3);
+  const observationProbe = createCollectionStore(null);
+  assert.equal(observationProbe.recordDuel({ playerWins: 31, machineWins: 33 }).snapshot.items
+    .find((item) => item.id === "most-wanted").response.level, 1);
+  assert.equal(observationProbe.recordDuel({ playerWins: 26, machineWins: 38 }).snapshot.items
+    .find((item) => item.id === "most-wanted").response.level, 2);
+  assert.equal(observationProbe.recordDuel({ playerWins: 22, machineWins: 42 }).snapshot.items
+    .find((item) => item.id === "most-wanted").response.level, 3);
+  const breaker = collection.recordDuel({ playerWins: 43, machineWins: 21 });
+  assert.deepEqual(breaker.newUnlocks, ["shannon-breaker"]);
+  assert.equal(breaker.snapshot.records.breakerConfirmations, 1);
+  const observed = collection.recordDuel({ playerWins: 21, machineWins: 43 });
+  assert.deepEqual(observed.newUnlocks, ["most-wanted"]);
+  assert.equal(observed.completedNow, true);
+  assert.equal(observed.snapshot.complete, true);
+
+  const confirmedAgain = collection.recordDuel({ playerWins: 49, machineWins: 15 });
+  assert.deepEqual(confirmedAgain.newUnlocks, []);
+  assert.equal(confirmedAgain.snapshot.records.breakerConfirmations, 2);
+  assert.equal(collection.setQuickMode("adventure", true).preferences.quickAdventure, true);
+
+  const stored = JSON.parse(values.get(COLLECTION_STORAGE_KEY));
+  assert.deepEqual(Object.keys(stored), ["version", "unlocked", "records", "preferences"]);
+  assert.equal(stored.version, 2);
+  assert.deepEqual(stored.unlocked, [
+    "ember-coins", "relay-compass", "shannon-key", "question-manuscript", "shannon-breaker", "most-wanted",
+  ]);
+  assert.doesNotMatch(JSON.stringify(stored), /nickname|route|choice|move|history/i);
+
+  const reopened = createCollectionStore(storage).snapshot();
+  assert.equal(reopened.count, 6);
+  assert.equal(reopened.total, 6);
+  assert.equal(reopened.records.minDangerHits, 0);
+  assert.equal(reopened.records.duelMinMachineWins, 15);
+  assert.equal(reopened.records.duelMaxMachineWins, 43);
+  assert.equal(reopened.preferences.quickAdventure, true);
+  assert.throws(() => collection.unlock("invented-medal"), /unknown collection item/);
+  assert.equal(collection.reset().count, 0);
+  assert.equal(values.has(COLLECTION_STORAGE_KEY), false);
+});
+
+test("the cabinet migrates authored unlock IDs from its v1 payload", () => {
+  const values = new Map([["shannon-mind-reader.collection.v1", JSON.stringify({
+    version: 1,
+    unlocked: ["relay-compass", "invented-medal", "shannon-breaker"],
+  })]]);
+  const storage = {
+    getItem(key) { return values.has(key) ? values.get(key) : null; },
+    setItem(key, value) { values.set(key, value); },
+    removeItem(key) { values.delete(key); },
+  };
+  const collection = createCollectionStore(storage);
+  assert.deepEqual(collection.snapshot().unlocked, ["ember-coins", "relay-compass", "shannon-breaker"]);
+  collection.setQuickMode("duel", true);
+  assert.equal(values.has("shannon-mind-reader.collection.v1"), false);
+  assert.equal(JSON.parse(values.get(COLLECTION_STORAGE_KEY)).preferences.quickDuel, true);
+});
+
+test("the collection falls back to page memory when persistent storage is unavailable", () => {
+  const blocked = {
+    getItem() { throw new Error("blocked"); },
+    setItem() { throw new Error("blocked"); },
+    removeItem() { throw new Error("blocked"); },
+  };
+  const collection = createCollectionStore(blocked);
+  assert.equal(collection.unlock("question-manuscript").isNew, true);
+  assert.deepEqual(collection.snapshot().unlocked, [
+    "ember-coins", "relay-compass", "shannon-key", "question-manuscript",
+  ]);
+  assert.equal(collection.recordDuel({ playerWins: 42, machineWins: 22 }).snapshot.records.duelRuns, 1);
 });
 
 test("adventure danger only counts trained catches after warmup and loses one lamp per chain", () => {

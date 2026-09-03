@@ -14,6 +14,40 @@
   const LEFT = "L";
   const RIGHT = "R";
   const SHANNON_CELL_ORDER = Object.freeze(["WSW", "WSL", "WDW", "WDL", "LSW", "LSL", "LDW", "LDL"]);
+  const COLLECTION_STORAGE_KEY = "shannon-mind-reader.collection.v2";
+  const LEGACY_COLLECTION_STORAGE_KEY = "shannon-mind-reader.collection.v1";
+  const COLLECTION_ITEMS = Object.freeze([
+    Object.freeze({
+      id: "ember-coins", code: "A-01", group: "treasure", name: "余烬金币",
+      hint: "至少带着 1 盏命灯抵达",
+      lore: "从熄灯后的余温里回收。它证明至少有一条航迹穿过了香农海峡。",
+    }),
+    Object.freeze({
+      id: "relay-compass", code: "A-02", group: "treasure", name: "继电罗盘",
+      hint: "至少带着 2 盏命灯抵达",
+      lore: "指针不找北，只朝机器刚刚学会的局面轻轻偏转。",
+    }),
+    Object.freeze({
+      id: "shannon-key", code: "A-03", group: "treasure", name: "香农密钥",
+      hint: "带着 3 盏命灯抵达",
+      lore: "三盏灯都亮着时才会显形，但它从不替持有人选择左或右。",
+    }),
+    Object.freeze({
+      id: "question-manuscript", code: "A-04", group: "treasure", name: "问号原稿",
+      hint: "100 海里 · 红光锁定 0 次",
+      lore: "纸页没有一处红色批注，只在边缘留下八枚继电孔。",
+    }),
+    Object.freeze({
+      id: "shannon-breaker", code: "B-08A", group: "seal", name: "香农破解章",
+      hint: "CASE 8 · 领先还不是终点",
+      lore: "机器承认这份成绩里有真本事，也有几次无法预知的盲猜。",
+    }),
+    Object.freeze({
+      id: "most-wanted", code: "B-08B", group: "seal", name: "重点观察章",
+      hint: "CASE 8 · 从另一端撞开档案",
+      lore: "这不是安慰奖。它证明机器曾把一名人类读得足够彻底。",
+    }),
+  ]);
 
   function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
@@ -866,8 +900,11 @@
     return `${name}，你是香农严选 ${eggScore.label}，和机器打成平手，胜在供电稳定！`;
   }
 
-  function classifyTreasure(lives) {
+  function classifyTreasure(lives, dangerHits) {
     if (!Number.isInteger(lives)) throw new TypeError("lives must be an integer");
+    if (dangerHits !== undefined && (!Number.isInteger(dangerHits) || dangerHits < 0)) {
+      throw new RangeError("danger hits must be a non-negative integer");
+    }
     const treasures = {
       1: {
         id: "ember-coins",
@@ -892,6 +929,15 @@
       },
     };
     if (!treasures[lives]) throw new RangeError("treasure requires 1 to 3 remaining lamps");
+    if (lives === 3 && dangerHits === 0) {
+      return Object.freeze({
+        id: "question-manuscript",
+        archiveNumber: "04",
+        name: "问号原稿",
+        rarityLevel: 4,
+        rarityLabel: "原典级",
+      });
+    }
     return Object.freeze(treasures[lives]);
   }
 
@@ -909,7 +955,393 @@
     if (treasure.id === "shannon-key") {
       return `${name}，三盏命灯全部亮着，香农密钥归你。`;
     }
+    if (treasure.id === "question-manuscript") {
+      return `${name}，一百海里没有一次红光锁定。问号原稿终于现身。`;
+    }
     throw new RangeError("unknown treasure id");
+  }
+
+  function sanitiseCollectionIds(value) {
+    if (!Array.isArray(value)) return [];
+    const selected = value.filter((id) => COLLECTION_ITEMS.some((item) => item.id === id));
+    const include = (id) => { if (!selected.includes(id)) selected.push(id); };
+    if (selected.includes("question-manuscript")) include("shannon-key");
+    if (selected.includes("shannon-key")) include("relay-compass");
+    if (selected.includes("relay-compass")) include("ember-coins");
+    return COLLECTION_ITEMS
+      .filter((item) => selected.includes(item.id))
+      .map((item) => item.id);
+  }
+
+  function qualifyingTreasureIds(lives, dangerHits) {
+    if (!Number.isInteger(lives) || lives < 1 || lives > 3) {
+      throw new RangeError("treasure qualifications require 1 to 3 remaining lamps");
+    }
+    if (!Number.isInteger(dangerHits) || dangerHits < 0) {
+      throw new RangeError("treasure qualifications require non-negative danger hits");
+    }
+    const ids = ["ember-coins"];
+    if (lives >= 2) ids.push("relay-compass");
+    if (lives >= 3) ids.push("shannon-key");
+    if (lives === 3 && dangerHits === 0) ids.push("question-manuscript");
+    return Object.freeze(ids);
+  }
+
+  const COLLECTION_RECORD_DEFAULTS = Object.freeze({
+    adventureRuns: 0,
+    successfulVoyages: 0,
+    furthestMile: 0,
+    minDangerHits: null,
+    bestLamps: 0,
+    perfectVoyages: 0,
+    duelRuns: 0,
+    duelMinMachineWins: null,
+    duelMaxMachineWins: null,
+    breakerConfirmations: 0,
+    observationConfirmations: 0,
+  });
+
+  const COLLECTION_PREFERENCE_DEFAULTS = Object.freeze({
+    quickAdventure: false,
+    quickDuel: false,
+  });
+
+  function boundedInteger(value, min, max, fallback) {
+    return Number.isInteger(value) && value >= min && value <= max ? value : fallback;
+  }
+
+  function incrementCollectionCount(value) {
+    return Math.min(999999, value + 1);
+  }
+
+  function nullableBoundedInteger(value, min, max) {
+    return value === null ? null : boundedInteger(value, min, max, null);
+  }
+
+  function sanitiseCollectionRecords(value) {
+    const input = value && typeof value === "object" ? value : {};
+    return {
+      adventureRuns: boundedInteger(input.adventureRuns, 0, 999999, 0),
+      successfulVoyages: boundedInteger(input.successfulVoyages, 0, 999999, 0),
+      furthestMile: boundedInteger(input.furthestMile, 0, 100, 0),
+      minDangerHits: nullableBoundedInteger(input.minDangerHits, 0, 100),
+      bestLamps: boundedInteger(input.bestLamps, 0, 3, 0),
+      perfectVoyages: boundedInteger(input.perfectVoyages, 0, 999999, 0),
+      duelRuns: boundedInteger(input.duelRuns, 0, 999999, 0),
+      duelMinMachineWins: nullableBoundedInteger(input.duelMinMachineWins, 0, 64),
+      duelMaxMachineWins: nullableBoundedInteger(input.duelMaxMachineWins, 0, 64),
+      breakerConfirmations: boundedInteger(input.breakerConfirmations, 0, 999999, 0),
+      observationConfirmations: boundedInteger(input.observationConfirmations, 0, 999999, 0),
+    };
+  }
+
+  function sanitiseCollectionPreferences(value) {
+    const input = value && typeof value === "object" ? value : {};
+    return {
+      quickAdventure: input.quickAdventure === true,
+      quickDuel: input.quickDuel === true,
+    };
+  }
+
+  function sanitiseCollectionState(value) {
+    const input = value && typeof value === "object" ? value : {};
+    return {
+      version: 2,
+      unlocked: sanitiseCollectionIds(input.unlocked),
+      records: sanitiseCollectionRecords(input.records),
+      preferences: sanitiseCollectionPreferences(input.preferences),
+    };
+  }
+
+  function responseRecord(level, label, evidence, confirmations) {
+    return Object.freeze({
+      level,
+      label,
+      evidence: evidence || "",
+      confirmations: Number.isInteger(confirmations) ? confirmations : 0,
+    });
+  }
+
+  function collectionResponse(item, records, unlocked) {
+    if (item.id === "question-manuscript") {
+      const best = records.minDangerHits;
+      const evidence = best === null ? "" : `本机最少红光 ${best} 次`;
+      if (unlocked || best === 0) {
+        return responseRecord(4, "原稿已归档", evidence, records.perfectVoyages);
+      }
+      if (best === null) return responseRecord(0, "尚无完整航迹", "", 0);
+      if (best >= 13) return responseRecord(1, "红色干扰仍在", evidence, 0);
+      if (best >= 6) return responseRecord(2, "信号正在成形", evidence, 0);
+      return responseRecord(3, "原稿轮廓出现", evidence, 0);
+    }
+
+    if (item.id === "shannon-breaker") {
+      const best = records.duelMinMachineWins;
+      const evidence = best === null ? "" : `本机最佳 ${64 - best}:${best}`;
+      if (unlocked || (best !== null && best <= 21)) {
+        return responseRecord(4, "香农正式签发", evidence, records.breakerConfirmations);
+      }
+      if (best === null || best >= 32) return responseRecord(0, "封条静默", evidence, 0);
+      if (best >= 28) return responseRecord(1, "检测到微弱响应", evidence, 0);
+      if (best >= 24) return responseRecord(2, "继电器持续吸合", evidence, 0);
+      return responseRecord(3, "封条已经松动", evidence, 0);
+    }
+
+    if (item.id === "most-wanted") {
+      const best = records.duelMaxMachineWins;
+      const evidence = best === null ? "" : `最深观察 ${64 - best}:${best}`;
+      if (unlocked || (best !== null && best >= 43)) {
+        return responseRecord(4, "机器正式列档", evidence, records.observationConfirmations);
+      }
+      if (best === null || best <= 32) return responseRecord(0, "封条静默", evidence, 0);
+      if (best <= 36) return responseRecord(1, "检测到微弱响应", evidence, 0);
+      if (best <= 40) return responseRecord(2, "继电器持续吸合", evidence, 0);
+      return responseRecord(3, "封条已经松动", evidence, 0);
+    }
+
+    return unlocked
+      ? responseRecord(4, "已归档", item.hint, 0)
+      : responseRecord(0, "等待回收", item.hint, 0);
+  }
+
+  /*
+   * The cabinet remembers six authored IDs, anonymous aggregate evidence and
+   * the two reveal-speed preferences.
+   * The browser supplies a localStorage-shaped adapter; tests and restricted
+   * WebViews can supply a tiny in-memory one. Names, individual moves and routes
+   * never enter this store.
+   */
+  function createCollectionStore(storage) {
+    let backend = storage && typeof storage.getItem === "function"
+      && typeof storage.setItem === "function" && typeof storage.removeItem === "function"
+      ? storage
+      : null;
+    let memory = sanitiseCollectionState(null);
+
+    function read() {
+      if (!backend) return sanitiseCollectionState(memory);
+      try {
+        const raw = backend.getItem(COLLECTION_STORAGE_KEY);
+        if (raw) {
+          memory = sanitiseCollectionState(JSON.parse(raw));
+          return sanitiseCollectionState(memory);
+        }
+        const legacyRaw = backend.getItem(LEGACY_COLLECTION_STORAGE_KEY);
+        memory = legacyRaw
+          ? sanitiseCollectionState({ unlocked: JSON.parse(legacyRaw).unlocked })
+          : sanitiseCollectionState(null);
+      } catch (_error) {
+        backend = null;
+      }
+      return sanitiseCollectionState(memory);
+    }
+
+    function write(value) {
+      memory = sanitiseCollectionState(value);
+      if (backend) {
+        try {
+          backend.setItem(COLLECTION_STORAGE_KEY, JSON.stringify(memory));
+          try {
+            backend.removeItem(LEGACY_COLLECTION_STORAGE_KEY);
+          } catch (_error) {
+            // A successful v2 write is enough; stale v1 data is ignored.
+          }
+        } catch (_error) {
+          backend = null;
+        }
+      }
+      return sanitiseCollectionState(memory);
+    }
+
+    function snapshotFromState(value) {
+      const state = sanitiseCollectionState(value);
+      const unlocked = state.unlocked.slice();
+      const records = Object.freeze(Object.assign({}, state.records));
+      const preferences = Object.freeze(Object.assign({}, state.preferences));
+      const items = COLLECTION_ITEMS.map((item) => Object.freeze(Object.assign({}, item, {
+        unlocked: unlocked.includes(item.id),
+        response: collectionResponse(item, records, unlocked.includes(item.id)),
+      })));
+      return Object.freeze({
+        count: unlocked.length,
+        total: COLLECTION_ITEMS.length,
+        complete: unlocked.length === COLLECTION_ITEMS.length,
+        unlocked: Object.freeze(unlocked),
+        items: Object.freeze(items),
+        records,
+        preferences,
+      });
+    }
+
+    function snapshot() {
+      return snapshotFromState(read());
+    }
+
+    function addUnlocks(state, ids) {
+      const newUnlocks = [];
+      ids.forEach((id) => {
+        if (!COLLECTION_ITEMS.some((candidate) => candidate.id === id)) {
+          throw new RangeError("unknown collection item");
+        }
+        if (!state.unlocked.includes(id)) {
+          state.unlocked.push(id);
+          newUnlocks.push(id);
+        }
+      });
+      state.unlocked = sanitiseCollectionIds(state.unlocked);
+      return newUnlocks;
+    }
+
+    function responseChanges(before, after) {
+      return after.items.reduce((changes, item) => {
+        const previous = before.items.find((candidate) => candidate.id === item.id);
+        if (previous && previous.response.level !== item.response.level) {
+          changes.push(Object.freeze({
+            id: item.id,
+            from: previous.response.level,
+            to: item.response.level,
+            label: item.response.label,
+            evidence: item.response.evidence,
+          }));
+        }
+        return changes;
+      }, []);
+    }
+
+    function archiveUpdate(mode, before, after, newUnlocks, improvements) {
+      return Object.freeze({
+        mode,
+        newUnlocks: Object.freeze(newUnlocks.slice()),
+        improvements: Object.freeze(improvements.map((item) => Object.freeze(item))),
+        responseChanges: Object.freeze(responseChanges(before, after)),
+        completedNow: !before.complete && after.complete,
+        snapshot: after,
+      });
+    }
+
+    function unlockMany(ids) {
+      if (!Array.isArray(ids)) throw new TypeError("collection unlocks must be an array");
+      ids.forEach((id) => {
+        if (!COLLECTION_ITEMS.some((candidate) => candidate.id === id)) {
+          throw new RangeError("unknown collection item");
+        }
+      });
+      const before = snapshot();
+      const state = read();
+      const newUnlocks = addUnlocks(state, sanitiseCollectionIds(ids));
+      const after = snapshotFromState(write(state));
+      return archiveUpdate("manual", before, after, newUnlocks, []);
+    }
+
+    function unlock(id) {
+      const item = COLLECTION_ITEMS.find((candidate) => candidate.id === id);
+      if (!item) throw new RangeError("unknown collection item");
+      const update = unlockMany([id]);
+      return Object.freeze({ item, isNew: update.newUnlocks.includes(id), snapshot: update.snapshot });
+    }
+
+    function recordAdventure(result) {
+      if (!result || typeof result !== "object") throw new TypeError("adventure result is required");
+      const distance = boundedInteger(result.distance, 1, 100, null);
+      const lives = boundedInteger(result.lives, 0, 3, null);
+      const dangerHits = boundedInteger(result.dangerHits, 0, 100, null);
+      if (distance === null || lives === null || dangerHits === null) {
+        throw new RangeError("invalid adventure result");
+      }
+      const completed = distance === 100 && lives > 0;
+      const before = snapshot();
+      const state = read();
+      const records = state.records;
+      const improvements = [];
+      records.adventureRuns = incrementCollectionCount(records.adventureRuns);
+      if (distance > records.furthestMile) {
+        improvements.push({ key: "furthestMile", previous: records.furthestMile, value: distance });
+        records.furthestMile = distance;
+      }
+      let qualifying = [];
+      if (completed) {
+        records.successfulVoyages = incrementCollectionCount(records.successfulVoyages);
+        if (lives > records.bestLamps) {
+          improvements.push({ key: "bestLamps", previous: records.bestLamps, value: lives });
+          records.bestLamps = lives;
+        }
+        if (records.minDangerHits === null || dangerHits < records.minDangerHits) {
+          improvements.push({ key: "minDangerHits", previous: records.minDangerHits, value: dangerHits });
+          records.minDangerHits = dangerHits;
+        }
+        if (dangerHits === 0) records.perfectVoyages = incrementCollectionCount(records.perfectVoyages);
+        qualifying = qualifyingTreasureIds(lives, dangerHits);
+      }
+      const newUnlocks = addUnlocks(state, qualifying);
+      const after = snapshotFromState(write(state));
+      return archiveUpdate("adventure", before, after, newUnlocks, improvements);
+    }
+
+    function recordDuel(result) {
+      if (!result || typeof result !== "object") throw new TypeError("CASE 8 result is required");
+      const playerWins = boundedInteger(result.playerWins, 0, 64, null);
+      const machineWins = boundedInteger(result.machineWins, 0, 64, null);
+      if (playerWins === null || machineWins === null || playerWins + machineWins !== 64) {
+        throw new RangeError("CASE 8 result must contain 64 resolved hands");
+      }
+      const before = snapshot();
+      const state = read();
+      const records = state.records;
+      const improvements = [];
+      records.duelRuns = incrementCollectionCount(records.duelRuns);
+      if (records.duelMinMachineWins === null || machineWins < records.duelMinMachineWins) {
+        improvements.push({ key: "duelMinMachineWins", previous: records.duelMinMachineWins, value: machineWins });
+        records.duelMinMachineWins = machineWins;
+      }
+      if (records.duelMaxMachineWins === null || machineWins > records.duelMaxMachineWins) {
+        improvements.push({ key: "duelMaxMachineWins", previous: records.duelMaxMachineWins, value: machineWins });
+        records.duelMaxMachineWins = machineWins;
+      }
+      const egg = classifyEggScore(playerWins, machineWins);
+      const qualifying = [];
+      if (egg.tier === "shannon-chosen") {
+        qualifying.push("shannon-breaker");
+        records.breakerConfirmations = incrementCollectionCount(records.breakerConfirmations);
+      }
+      if (egg.tier === "shannon-villain") {
+        qualifying.push("most-wanted");
+        records.observationConfirmations = incrementCollectionCount(records.observationConfirmations);
+      }
+      const newUnlocks = addUnlocks(state, qualifying);
+      const after = snapshotFromState(write(state));
+      return archiveUpdate("duel", before, after, newUnlocks, improvements);
+    }
+
+    function setQuickMode(mode, enabled) {
+      if (mode !== "adventure" && mode !== "duel") throw new RangeError("unknown quick mode");
+      if (typeof enabled !== "boolean") throw new TypeError("quick mode must be boolean");
+      const state = read();
+      state.preferences[mode === "adventure" ? "quickAdventure" : "quickDuel"] = enabled;
+      return snapshotFromState(write(state));
+    }
+
+    function reset() {
+      memory = sanitiseCollectionState(null);
+      if (backend) {
+        try {
+          backend.removeItem(COLLECTION_STORAGE_KEY);
+          backend.removeItem(LEGACY_COLLECTION_STORAGE_KEY);
+        } catch (_error) {
+          backend = null;
+        }
+      }
+      return snapshotFromState(memory);
+    }
+
+    return Object.freeze({
+      snapshot,
+      unlock,
+      unlockMany,
+      recordAdventure,
+      recordDuel,
+      setQuickMode,
+      reset,
+    });
   }
 
   function formatAdventureLossGreeting(nickname, round) {
@@ -965,6 +1397,8 @@
     LEFT,
     RIGHT,
     SHANNON_CELL_ORDER,
+    COLLECTION_ITEMS,
+    COLLECTION_STORAGE_KEY,
     createPredictor,
     createShannonPredictor,
     summariseShannonVisits,
@@ -979,11 +1413,13 @@
     classifyResult,
     classifyEggScore,
     classifyTreasure,
+    qualifyingTreasureIds,
     normaliseNickname,
     formatEggGreeting,
     formatTreasureGreeting,
     formatAdventureLossGreeting,
     advanceAdventureDanger,
+    createCollectionStore,
     sessionHash,
   });
 });

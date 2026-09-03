@@ -40,6 +40,8 @@ Three lamps, one hundred nautical miles of the Shannon Strait.
 - After that the sea turns. Pick left or right at each fork; three consecutive catches by the searchlight put out one lamp.
 - From mile 80 a storm tightens the rule: two consecutive catches are now enough. The machine says so when you get there.
 - Reach the end with at least one lamp and the map is yours. The more lamps you keep, the rarer the find.
+- Voyage finds unlock cumulatively: arriving with three lamps files the one-, two-, and three-lamp treasures together, so nobody has to throw a run to fill an easier slot.
+- If all 100 miles pass without a single red lock, there is one find above the three-lamp treasure: the Question-Mark Manuscript. A blind coin-flip hit in the dark does not count as a red lock, so this rewards reading the machine rather than winning a lottery.
 
 Read the lighthouse before you move. Lit means the machine recognises the situation you are in and has an opinion. Dark means it is guessing. The lamp reports only how sure it is, never which side it bet. That stays sealed until after you move.
 
@@ -56,6 +58,16 @@ The title looks at four things: whether you stay or switch, whether the lamp cha
 So everyone gets a title, and the seal has to be earned. Someone whose four numbers all come out flat as a coin toss is a Nobody.
 
 The two go on separate cards: the egg card is the outcome, the title card is the evidence.
+
+## The Shannon relay cabinet
+
+The cabinet opens from the top-right of the lobby and from the dock in either game. It has six fixed slots: Ember Coins, the Relay Compass, the Shannon Key, the Question-Mark Manuscript, and the two seals issued by `CASE 8`—Shannon Breaker and Most Wanted. Locked objects still show their names and clues. The comic egg remains the main result; the relay receipt below it makes clear that a Smart Egg is not the last file.
+
+The three hidden files respond to the best evidence on this device. Relay contacts wake one by one and the manuscript moves from interference to an outline, but the interface never publishes the exact thresholds or a counter-strategy. Better personal results strengthen the receipt; repeating an issued seal adds a verification count. Filing all six opens a saveable “1953 Complete Experiment File.”
+
+After finishing a run in a mode, returning players can switch between standard and quick relay timing. Quick timing only shortens the reveal pause; it changes neither the machine nor the rules or randomness.
+
+Progress survives across runs on the current device. Alongside the six authored item IDs, the cabinet stores only anonymous aggregates such as settled-run counts, furthest voyage, fewest red locks, and the best result from either end of `CASE 8`. It never stores a callsign, full route, or hand-by-hand choices, and nothing is uploaded. A two-step control inside the cabinet clears the collection. The host system may also clear local data at any time.
 
 ## The eight-cell research room
 

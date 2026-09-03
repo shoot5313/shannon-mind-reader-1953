@@ -180,6 +180,7 @@ function playVoyage(createStrategy, rules) {
   let lives = 3;
   let danger = 0;
   let firstLampLost = null;
+  let dangerHits = 0;
 
   for (let round = 1; round <= rules.total; round += 1) {
     const chainLength = round > rules.stormAt ? rules.stormChain : rules.chain;
@@ -194,13 +195,14 @@ function playVoyage(createStrategy, rules) {
       { round, trained: record.trained, correct: record.correct },
       { warmup: rules.warmup, chainLength },
     );
+    if (next.dangerHit) dangerHits += 1;
     if (next.lifeLost && firstLampLost === null) firstLampLost = round;
     lives = next.lives;
     danger = next.danger;
-    if (lives === 0) return { captured: round, lives: 0, firstLampLost };
+    if (lives === 0) return { captured: round, lives: 0, firstLampLost, dangerHits };
   }
 
-  return { captured: null, lives, firstLampLost };
+  return { captured: null, lives, firstLampLost, dangerHits };
 }
 
 function playDuel(createStrategy) {
@@ -239,15 +241,18 @@ function reportVoyage(label, rules) {
     + "3灯".padStart(8)
     + "2灯".padStart(8)
     + "1灯".padStart(8)
+    + "0红".padStart(8)
     + "首次掉灯".padStart(10),
   );
   for (const [name, createStrategy] of Object.entries(STRATEGIES)) {
     const lamps = [0, 0, 0, 0];
     const firstLosses = [];
     let captured = 0;
+    let zeroRed = 0;
     for (let session = 0; session < SESSIONS; session += 1) {
       const result = playVoyage(createStrategy, rules);
       if (result.captured !== null) captured += 1;
+      if (result.captured === null && result.dangerHits === 0) zeroRed += 1;
       lamps[result.lives] += 1;
       if (result.firstLampLost !== null) firstLosses.push(result.firstLampLost);
     }
@@ -258,6 +263,7 @@ function reportVoyage(label, rules) {
       + pct(lamps[3]).padStart(8)
       + pct(lamps[2]).padStart(8)
       + pct(lamps[1]).padStart(8)
+      + pct(zeroRed).padStart(8)
       + String(median(firstLosses) ?? "-").padStart(10),
     );
   }

@@ -38,6 +38,7 @@ const duelCases = [
     playerWins: 32,
     machineWins: 32,
     label: "100% 普通蛋",
+    archiveCopy: "两枚未署名封条仍然静默",
     greeting: `${nickname}，你是香农严选 100% 普通蛋，和机器打成平手，胜在供电稳定！`,
   },
   {
@@ -46,6 +47,8 @@ const duelCases = [
     playerWins: 33,
     machineWins: 31,
     label: "100% 聪明蛋",
+    archiveCopy: "检测到微弱响应",
+    responseLevel: 1,
     greeting: smartGreeting("100% 聪明蛋"),
   },
   {
@@ -54,6 +57,8 @@ const duelCases = [
     playerWins: 38,
     machineWins: 26,
     label: "100% 聪明蛋",
+    archiveCopy: "继电器持续吸合",
+    responseLevel: 2,
     greeting: smartGreeting("100% 聪明蛋"),
   },
   {
@@ -62,6 +67,8 @@ const duelCases = [
     playerWins: 42,
     machineWins: 22,
     label: "100% 聪明蛋",
+    archiveCopy: "封条已经松动",
+    responseLevel: 3,
     greeting: smartGreeting("100% 聪明蛋"),
   },
   {
@@ -70,6 +77,7 @@ const duelCases = [
     playerWins: 43,
     machineWins: 21,
     label: "100% 聪明蛋",
+    archiveCopy: "香农破解章",
     greeting: `${nickname}，恭喜你成为香农严选 100% 聪明蛋，你可以用智力发电！`,
   },
   {
@@ -78,6 +86,8 @@ const duelCases = [
     playerWins: 49,
     machineWins: 15,
     label: "100% 聪明蛋",
+    archiveCopy: "香农正式签发",
+    responseLevel: 4,
     greeting: `${nickname}，恭喜你成为香农严选 100% 聪明蛋，你可以用智力发电！`,
   },
   {
@@ -86,6 +96,8 @@ const duelCases = [
     playerWins: 31,
     machineWins: 33,
     label: "100% 笨蛋",
+    archiveCopy: "检测到微弱响应",
+    responseLevel: 1,
     greeting: dumbGreeting("100% 笨蛋"),
   },
   {
@@ -94,6 +106,8 @@ const duelCases = [
     playerWins: 26,
     machineWins: 38,
     label: "100% 笨蛋",
+    archiveCopy: "继电器持续吸合",
+    responseLevel: 2,
     greeting: dumbGreeting("100% 笨蛋"),
   },
   {
@@ -102,6 +116,8 @@ const duelCases = [
     playerWins: 22,
     machineWins: 42,
     label: "100% 笨蛋",
+    archiveCopy: "封条已经松动",
+    responseLevel: 3,
     greeting: dumbGreeting("100% 笨蛋"),
   },
   {
@@ -110,6 +126,7 @@ const duelCases = [
     playerWins: 21,
     machineWins: 43,
     label: "100% 大坏蛋",
+    archiveCopy: "重点观察章",
     greeting: `${nickname}，恭喜你成为香农严选 100% 大坏蛋，机器已将你列为重点观察对象，你可以用坏心眼发电！`,
   },
   {
@@ -118,6 +135,8 @@ const duelCases = [
     playerWins: 15,
     machineWins: 49,
     label: "100% 大坏蛋",
+    archiveCopy: "机器正式列档",
+    responseLevel: 4,
     greeting: `${nickname}，恭喜你成为香农严选 100% 大坏蛋，机器已将你列为重点观察对象，你可以用坏心眼发电！`,
   },
   {
@@ -126,6 +145,8 @@ const duelCases = [
     playerWins: 0,
     machineWins: 64,
     label: "100% 大坏蛋",
+    archiveCopy: "机器正式列档",
+    responseLevel: 4,
     greeting: `${nickname}，恭喜你成为香农严选 100% 大坏蛋，机器已将你列为重点观察对象，你可以用坏心眼发电！`,
   },
 ];
@@ -139,7 +160,8 @@ const adventureCases = [
     round: 100,
     lives: 1,
     treasureName: "余烬金币",
-    treasureMeta: "回收级 · 图鉴稀有度 1 / 3",
+    archiveCopy: "余烬金币",
+    treasureMeta: "回收级 · 图鉴稀有度 1 / 4",
     greeting: `${nickname}，只剩最后一盏命灯，你还是把余烬金币带了回来。`,
   },
   {
@@ -150,7 +172,8 @@ const adventureCases = [
     round: 100,
     lives: 2,
     treasureName: "继电罗盘",
-    treasureMeta: "稀有级 · 图鉴稀有度 2 / 3",
+    archiveCopy: "继电罗盘",
+    treasureMeta: "稀有级 · 图鉴稀有度 2 / 4",
     greeting: `${nickname}，机器只熄灭一盏灯，继电罗盘归你。`,
   },
   {
@@ -160,9 +183,24 @@ const adventureCases = [
     outcome: "treasure",
     round: 100,
     lives: 3,
+    dangerHits: 1,
     treasureName: "香农密钥",
-    treasureMeta: "绝密级 · 图鉴稀有度 3 / 3",
+    archiveCopy: "原稿轮廓出现",
+    treasureMeta: "绝密级 · 图鉴稀有度 3 / 4",
     greeting: `${nickname}，三盏命灯全部亮着，香农密钥归你。`,
+  },
+  {
+    id: "adventure-treasure-question-manuscript",
+    title: "问号原稿 · 红光锁定 0 次",
+    strategy: "treasure-perfect",
+    outcome: "treasure",
+    round: 100,
+    lives: 3,
+    dangerHits: 0,
+    treasureName: "问号原稿",
+    archiveCopy: "1953 实验总档已经打开",
+    treasureMeta: "原典级 · 图鉴稀有度 4 / 4",
+    greeting: `${nickname}，一百海里没有一次红光锁定。问号原稿终于现身。`,
   },
   {
     id: "adventure-captured-19",
@@ -170,6 +208,7 @@ const adventureCases = [
     strategy: "caught",
     outcome: "captured",
     round: 19,
+    archiveCopy: "本机最远记录仍在第 100 海里",
     greeting: `${nickname}，你在第 19 海里被香农逮住了，宝藏还在前面，不过你可以用不服气发电！`,
   },
 ];
@@ -285,6 +324,8 @@ function driveDuelExpression(machineWins) {
       var state = api.getState();
       if (state.screen === "result") {
         clearInterval(timer);
+        var archive = document.querySelector(".result-collection");
+        var levelClass = archive ? Array.prototype.find.call(archive.classList, function(name) { return /^response-level-/.test(name); }) : null;
         resolve({
           playerWins: state.result.playerWins,
           machineWins: state.result.machineWins,
@@ -294,6 +335,8 @@ function driveDuelExpression(machineWins) {
           visitSummary: document.querySelector(".visit-profile > p").textContent.replace(/\\s+/g, " ").trim(),
           label: document.querySelector(".egg-card h1").textContent.trim(),
           greeting: document.querySelector(".egg-card h2").textContent.trim(),
+          archiveText: archive ? archive.textContent.replace(/\\s+/g, " ").trim() : "",
+          responseLevel: levelClass ? Number(levelClass.replace("response-level-", "")) : null,
           hasResultDisclaimer: Boolean(document.querySelector(".duel-result .duel-disclaimer")),
           scrollWidth: document.documentElement.scrollWidth,
           innerWidth: innerWidth,
@@ -320,6 +363,7 @@ function driveDuelExpression(machineWins) {
 
 function driveAdventureExpression(strategy) {
   const chooseCaught = strategy === "caught";
+  const chooseKey = strategy === "treasure-3";
   const targetLives = strategy === "treasure-1" ? 1 : strategy === "treasure-2" ? 2 : 3;
   return `new Promise(function(resolve, reject) {
     var deadline = Date.now() + 12000;
@@ -330,11 +374,14 @@ function driveAdventureExpression(strategy) {
       if (state.screen === "result") {
         clearInterval(timer);
         var greetingNode = document.querySelector(".captured-copy span, .treasure-copy span");
+        var archive = document.querySelector(".result-collection");
         resolve({
           outcome: state.result.outcome,
           round: state.result.round,
           lives: state.result.lives === undefined ? 0 : state.result.lives,
+          dangerHits: state.result.dangerHits === undefined ? null : state.result.dangerHits,
           greeting: greetingNode.textContent.trim(),
+          archiveText: archive ? archive.textContent.replace(/\\s+/g, " ").trim() : "",
           treasureName: document.querySelector(".treasure-copy h1") ? document.querySelector(".treasure-copy h1").textContent.trim() : "",
           treasureMeta: document.querySelector(".treasure-copy p") ? document.querySelector(".treasure-copy p").textContent.trim() : "",
           archiveClue: document.querySelector('[data-action="research"]').textContent.replace(/\s+/g, " ").trim(),
@@ -355,7 +402,11 @@ function driveAdventureExpression(strategy) {
       }
       if (!state.locked) {
         var prediction = state.pending.choice;
-        var choice = ${chooseCaught ? "prediction" : `state.lives > ${targetLives} ? prediction : (prediction === "L" ? "R" : "L")`};
+        var hasDangerHit = state.records.some(function(record) { return record.dangerHit; });
+        var forceKeyHit = ${chooseKey} && !hasDangerHit && state.records.length >= 10 && state.pending.trained;
+        var choice = forceKeyHit
+          ? prediction
+          : ${chooseCaught ? "prediction" : `state.lives > ${targetLives} ? prediction : (prediction === "L" ? "R" : "L")`};
         api.choose(choice);
       }
     }, 1);
@@ -581,6 +632,8 @@ async function main() {
       assert.equal(actual.machineWins, testCase.machineWins);
       assert.equal(actual.label, testCase.label);
       assert.equal(actual.greeting, testCase.greeting);
+      assert.ok(actual.archiveText.includes(testCase.archiveCopy), `archive response missing ${testCase.archiveCopy}: ${actual.archiveText}`);
+      if (testCase.responseLevel !== undefined) assert.equal(actual.responseLevel, testCase.responseLevel);
       assert.equal(actual.visitTotal, 62, "64 hands must produce 62 valid cell visits");
       assert.equal(actual.visitBars, 8, "result must show all eight cell visit bars");
       assert.equal(actual.visitCounts.reduce((sum, count) => sum + count, 0), 62);
@@ -623,14 +676,16 @@ async function main() {
       assert.equal(actual.outcome, testCase.outcome);
       assert.equal(actual.round, testCase.round);
       if (testCase.lives !== undefined) assert.equal(actual.lives, testCase.lives);
+      if (testCase.dangerHits !== undefined) assert.equal(actual.dangerHits, testCase.dangerHits);
       assert.equal(actual.greeting, testCase.greeting);
+      assert.ok(actual.archiveText.includes(testCase.archiveCopy), `archive receipt missing ${testCase.archiveCopy}: ${actual.archiveText}`);
       if (testCase.treasureName) assert.equal(actual.treasureName, testCase.treasureName);
       if (testCase.treasureMeta) assert.equal(actual.treasureMeta, testCase.treasureMeta);
       assert.match(actual.archiveClue, /CASE 8/);
       assert.doesNotMatch(actual.archiveClue, /八格研究室/);
       assert.equal(actual.primaryActionCount, 2);
       assert.equal(actual.hasProminentResearchButton, false);
-      assert.equal(actual.dockStatus, "航迹只在本机");
+      assert.equal(actual.dockStatus, "档案柜");
       assertViewport(actual);
 
       const cardName = `cards/${testCase.id}.png`;
@@ -692,7 +747,7 @@ async function main() {
     `- 32:32 的 100% 普通蛋\n- 33:31 的 100% 聪明蛋与 31:33 的 100% 笨蛋\n` +
     `- 43:21 与 21:43 恰好 2:1，正好触发隐藏成就；42:22 与 22:42 不触发\n` +
     `- 49:15 的 100% 聪明蛋，以及 15:49 的 100% 大坏蛋\n` +
-    `- 0:64 极端大坏蛋\n- 100 海里宝藏与第 19 海里最早截获路径\n` +
+    `- 0:64 极端大坏蛋\n- 四档 100 海里宝藏、零红光问号原稿与第 19 海里最早截获路径\n` +
     `- 行为称号卡的行数版式：${[...new Set(results.map((result) => result.personaMeasured))]
       .filter((count) => Number.isInteger(count))
       .sort((first, second) => second - first)

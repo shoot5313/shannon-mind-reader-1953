@@ -139,6 +139,191 @@ function checkDirectCase8Entry() {
   runCapture(url, "/tmp/shannon-direct-case8-entry.png", action);
 }
 
+function checkCollectionCabinet() {
+  const url = new URL(entry);
+  url.searchParams.set("variant", "hub");
+  const action = `(() => {
+    var miniTool = window.ShannonMiniTool;
+    var collection = miniTool && miniTool.collection;
+    if (!collection) throw new Error("missing collection store");
+    collection.reset();
+    var update = collection.recordAdventure({ distance: 100, lives: 3, dangerHits: 8 });
+    if (update.newUnlocks.join(",") !== "ember-coins,relay-compass,shannon-key") {
+      throw new Error("a three-lamp voyage did not cumulatively recover three treasures");
+    }
+    if (update.snapshot.items.find(function(item) { return item.id === "question-manuscript"; }).response.level !== 2) {
+      throw new Error("the manuscript did not respond to the best complete voyage");
+    }
+    if (window.MindReader.createCollectionStore(window.localStorage).snapshot().count !== 3) {
+      throw new Error("collection did not survive reopening its local store");
+    }
+    miniTool.showHub();
+
+    var entryButton = document.querySelector(".collection-entry[data-collection]");
+    if (!entryButton) throw new Error("the lobby has no cabinet entrance");
+    if (entryButton.querySelector("[data-collection-count]").textContent.trim() !== "3") {
+      throw new Error("the lobby did not restore collection progress");
+    }
+    if (entryButton.querySelectorAll("[data-collection-relay].is-on").length !== 3) {
+      throw new Error("the lobby relay lamps do not match collection progress");
+    }
+    entryButton.click();
+
+    var modal = document.querySelector(".collection-cabinet-modal");
+    var text = modal ? modal.textContent.replace(/\\s+/g, " ").trim() : "";
+    if (!modal || document.querySelectorAll(".cabinet-slot").length !== 6) {
+      throw new Error("the cabinet does not expose all six slots");
+    }
+    ["余烬金币", "继电罗盘", "香农密钥", "问号原稿", "香农破解章", "重点观察章"].forEach(function(name) {
+      if (!text.includes(name)) throw new Error("cabinet is missing " + name);
+    });
+    if (!text.includes("信号正在成形") || !text.includes("昵称、完整路线与逐手选择不会写入档案柜")) {
+      throw new Error("cabinet is missing its progressive response or privacy boundary");
+    }
+    var manuscript = modal.querySelector('[data-collection-item="question-manuscript"]');
+    if (!manuscript.classList.contains("response-level-2") || manuscript.querySelectorAll(".cabinet-response__contacts .is-on").length !== 2) {
+      throw new Error("the manuscript slot does not show two physical response contacts");
+    }
+    var manuscriptInspect = manuscript.querySelector("[data-inspect-collection]");
+    manuscriptInspect.click();
+    var drawer = modal.querySelector("[data-evidence-drawer]");
+    var drawerText = drawer.textContent.replace(/\\s+/g, " ").trim();
+    if (drawer.hidden || !drawerText.includes("本机最少红光 8 次") || !drawerText.includes("信号正在成形")) {
+      throw new Error("the evidence drawer lost the anonymous local best");
+    }
+    drawer.querySelector("[data-close-evidence]").click();
+    if (document.activeElement !== manuscriptInspect) {
+      throw new Error("closing the evidence drawer did not return focus to its archive slot");
+    }
+
+    var reset = modal.querySelector("[data-reset-collection]");
+    reset.click();
+    if (collection.snapshot().count !== 3 || !reset.textContent.includes("再次点击")) {
+      throw new Error("collection reset skipped confirmation");
+    }
+    reset.click();
+    if (collection.snapshot().count !== 0) throw new Error("collection reset failed");
+    var lockedManuscript = modal.querySelector('[data-collection-item="question-manuscript"]');
+    lockedManuscript.querySelector("[data-inspect-collection]").click();
+    var lockedEvidence = modal.querySelector("[data-evidence-drawer]").textContent.replace(/\s+/g, " ").trim();
+    if (lockedEvidence.includes("红光锁定 0 次") || !lockedEvidence.includes("先留下完整航迹")) {
+      throw new Error("the locked manuscript disclosed its exact trigger: " + lockedEvidence);
+    }
+    return { slots: 6, beforeReset: 3, response: 2, afterReset: 0, modalText: text };
+  })()`;
+  runCapture(url, "/tmp/shannon-collection-cabinet.png", action);
+}
+
+function checkFirstPerfectVoyageArchive() {
+  const url = new URL(entry);
+  url.searchParams.set("variant", "adventure");
+  url.searchParams.set("name", "零红光测试");
+  url.searchParams.set("shell", "1");
+  url.searchParams.set("start", "1");
+  url.searchParams.set("seed", "1953");
+  url.searchParams.set("qa", "1");
+  url.searchParams.set("speed", "0");
+  const action = `new Promise(function(resolve, reject) {
+    var api = window.__twoModePrototype;
+    window.ShannonMiniTool.collection.reset();
+    var deadline = Date.now() + 8000;
+    function step() {
+      if (Date.now() > deadline) { reject(new Error("perfect voyage archive check timed out")); return; }
+      var state = api.getState();
+      if (state.screen === "result") {
+        var receipt = document.querySelector(".result-collection");
+        var receiptText = receipt ? receipt.textContent.replace(/\\s+/g, " ").trim() : "";
+        if (!state.result.treasure || state.result.treasure.id !== "question-manuscript" || state.result.dangerHits !== 0) {
+          reject(new Error("zero-red voyage did not reveal the question manuscript"));
+          return;
+        }
+        if (state.newUnlocks.length !== 4 || !receiptText.includes("本次补录 4 件") || !receiptText.includes("问号原稿")) {
+          reject(new Error("first perfect voyage did not cumulatively file all four treasures: " + receiptText));
+          return;
+        }
+        if (document.documentElement.scrollWidth > innerWidth) {
+          reject(new Error("four-item archive receipt overflows the mobile viewport"));
+          return;
+        }
+        resolve({ treasure: state.result.treasure.name, newUnlocks: state.newUnlocks, receipt: receiptText });
+        return;
+      }
+      if (!state.locked) {
+        api.choose(state.pending.choice === "L" ? "R" : "L");
+      }
+      setTimeout(step, 0);
+    }
+    step();
+  })`;
+  runCapture(url, "/tmp/shannon-first-perfect-voyage.png", action);
+}
+
+function checkCompletedArchiveCertificate() {
+  const url = new URL(entry);
+  url.searchParams.set("variant", "hub");
+  const action = `new Promise(function(resolve, reject) {
+    var miniTool = window.ShannonMiniTool;
+    var collection = miniTool.collection;
+    collection.reset();
+    collection.recordAdventure({ distance: 100, lives: 3, dangerHits: 0 });
+    collection.recordDuel({ playerWins: 43, machineWins: 21 });
+    var finalUpdate = collection.recordDuel({ playerWins: 21, machineWins: 43 });
+    if (!finalUpdate.completedNow || !finalUpdate.snapshot.complete || finalUpdate.snapshot.count !== 6) {
+      reject(new Error("the sixth artifact did not complete the total archive"));
+      return;
+    }
+    miniTool.showHub();
+    document.querySelector("[data-collection]").click();
+    var cabinet = document.querySelector(".collection-cabinet");
+    var completion = cabinet && cabinet.querySelector(".collection-completion");
+    if (!completion || !cabinet.classList.contains("is-complete")) {
+      reject(new Error("the 6/6 cabinet has no final archive panel"));
+      return;
+    }
+    completion.querySelector("[data-collection-certificate]").click();
+    setTimeout(function() {
+      var modal = document.querySelector(".collection-certificate-modal");
+      var image = modal && modal.querySelector("img");
+      if (!modal || !image || image.naturalWidth !== 1080 || image.naturalHeight !== 1440 || !/^data:image\\/png;base64,/.test(image.src)) {
+        reject(new Error("the final archive certificate is missing or malformed"));
+        return;
+      }
+      resolve({ count: 6, width: image.naturalWidth, height: image.naturalHeight });
+    }, 80);
+  })`;
+  runCapture(url, "/tmp/shannon-complete-archive.png", action);
+}
+
+function checkQuickRelayPreference() {
+  const url = new URL(entry);
+  url.searchParams.set("variant", "adventure");
+  url.searchParams.set("name", "复航测试");
+  url.searchParams.set("shell", "1");
+  url.searchParams.set("start", "1");
+  url.searchParams.set("seed", "1953");
+  url.searchParams.set("qa", "1");
+  const action = `(() => {
+    var api = window.__twoModePrototype;
+    var collection = window.ShannonMiniTool.collection;
+    collection.reset();
+    collection.recordAdventure({ distance: 19, lives: 0, dangerHits: 3 });
+    api.restart();
+    var speed = document.querySelector('[data-action="toggle-speed"]');
+    if (!speed || !speed.textContent.includes("标准")) throw new Error("returning players cannot find relay speed");
+    speed.click();
+    if (!api.getState().quickMode || !collection.snapshot().preferences.quickAdventure) {
+      throw new Error("quick relay preference was not stored");
+    }
+    api.restart();
+    speed = document.querySelector('[data-action="toggle-speed"]');
+    if (!api.getState().quickMode || !speed || !speed.textContent.includes("快速")) {
+      throw new Error("quick relay preference did not survive a retry");
+    }
+    return { availableAfterRun: true, quick: api.getState().quickMode };
+  })()`;
+  runCapture(url, "/tmp/shannon-quick-relay.png", action);
+}
+
 function checkAdventureMilestones() {
   const url = new URL(entry);
   url.searchParams.set("variant", "adventure");
@@ -436,6 +621,10 @@ function checkPersonaReveal() {
 
 checkAdventureBrief();
 checkDirectCase8Entry();
+checkCollectionCabinet();
+checkFirstPerfectVoyageArchive();
+checkCompletedArchiveCertificate();
+checkQuickRelayPreference();
 checkInitialBeamIsHidden();
 checkMode("adventure", ".sea-feedback");
 checkMode("duel", ".duel-feedback");
@@ -444,4 +633,4 @@ checkAdventureCaptureFeedback();
 checkSearchlight();
 checkDuelBanksAndReset();
 checkPersonaReveal();
-process.stdout.write("Onboarding, persistent feedback, voyage milestones, the searchlight, the behavioural title, and CASE 8 banks/reset pass.\n");
+process.stdout.write("Onboarding, cumulative archives, the 6/6 certificate, quick retry preference, voyage feedback, the searchlight, behavioural titles, and CASE 8 banks/reset pass.\n");

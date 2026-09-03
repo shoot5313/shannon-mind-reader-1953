@@ -22,6 +22,8 @@
     ? options.unifiedShell
     : params.get("shell") === "1";
   const nickname = Engine.normaliseNickname(options.nickname || params.get("name"));
+  const collection = miniTool.collection || Engine.createCollectionStore(null);
+  miniTool.collection = collection;
   const startImmediately = typeof options.startImmediately === "boolean"
     ? options.startImmediately
     : unifiedShell && params.get("start") === "1";
@@ -82,6 +84,7 @@
   function createRun(nextMode, startImmediately = false) {
     runNumber += 1;
     const predictor = Engine.createShannonPredictor({ seed: seedForRun() });
+    const cabinet = collection.snapshot();
     return {
       mode: nextMode,
       predictor,
@@ -93,6 +96,11 @@
       locked: false,
       last: null,
       result: null,
+      archiveUpdate: null,
+      newUnlocks: [],
+      quickMode: nextMode === "adventure"
+        ? cabinet.preferences.quickAdventure
+        : cabinet.preferences.quickDuel,
     };
   }
 
@@ -141,13 +149,12 @@
 
   function modeSwitcher() {
     const title = mode === "adventure" ? "A / 冒险寻宝" : "B / 八格研究室";
-    const sealCode = mode === "duel" ? "8-CELL" : "OFFLINE";
-    const sealText = mode === "duel" ? "档案核验中" : "航迹只在本机";
+    const cabinet = collection.snapshot();
     return `
       <nav class="mode-switcher product-dock" aria-label="当前任务">
         <button type="button" data-home aria-label="返回 1953 实验大厅"><span>⌁</span><small>1953</small></button>
         <div><small>CALLSIGN / ${safeNickname}</small><strong>${title}</strong></div>
-        <span class="product-dock__seal"><b>${sealCode}</b><small>${sealText}</small></span>
+        <button class="product-dock__seal product-dock__collection" type="button" data-collection aria-label="打开香农档案柜，已收录 ${cabinet.count} / ${cabinet.total}"><b><i data-collection-count>${cabinet.count}</i> / ${cabinet.total}</b><small>档案柜</small></button>
       </nav>
     `;
   }
@@ -206,6 +213,51 @@
     switchMode("duel");
   }
 
+  function openCollectionCabinet() {
+    if (typeof miniTool.showCollectionCabinet !== "function") return;
+    miniTool.showCollectionCabinet({ highlightIds: state.newUnlocks });
+  }
+
+  function recordRunResult() {
+    state.newUnlocks = [];
+    if (mode === "adventure") {
+      const dangerHits = state.records.filter((record) => record.dangerHit).length;
+      state.result.dangerHits = dangerHits;
+      if (state.result.outcome === "treasure") {
+        state.result.treasure = Engine.classifyTreasure(state.result.lives, dangerHits);
+      }
+      state.archiveUpdate = collection.recordAdventure({
+        distance: state.result.outcome === "treasure" ? ADVENTURE_TOTAL : state.result.round,
+        lives: state.result.outcome === "treasure" ? state.result.lives : 0,
+        dangerHits,
+      });
+    } else {
+      state.archiveUpdate = collection.recordDuel({
+        playerWins: state.result.playerWins,
+        machineWins: state.result.machineWins,
+      });
+    }
+    state.newUnlocks = state.archiveUpdate.newUnlocks.slice();
+  }
+
+  function quickModeAvailable() {
+    const records = collection.snapshot().records;
+    return mode === "adventure" ? records.adventureRuns > 0 : records.duelRuns > 0;
+  }
+
+  function toggleQuickMode() {
+    if (!quickModeAvailable()) return;
+    state.quickMode = !state.quickMode;
+    collection.setQuickMode(mode, state.quickMode);
+    render();
+  }
+
+  function quickModeButton(extraClass = "") {
+    if (!quickModeAvailable()) return "";
+    const label = state.quickMode ? "快速" : "标准";
+    return `<button class="relay-speed-toggle ${extraClass}" type="button" data-action="toggle-speed" aria-pressed="${state.quickMode}"><small>继电速度</small><strong>${label}</strong></button>`;
+  }
+
   // The chain the player is currently sailing under. Read this instead of
   // DANGER_CHAIN anywhere the number reaches the screen, or the storm will
   // still say "1 / 3".
@@ -246,18 +298,24 @@
     playFeedback(record);
     render();
 
-    const delay = instant ? 0 : record.lifeLost ? 1250 : record.dangerHit ? 720 : 420;
+    const delay = instant
+      ? 0
+      : state.quickMode
+        ? record.lifeLost ? 850 : record.dangerHit ? 480 : 240
+        : record.lifeLost ? 1250 : record.dangerHit ? 720 : 420;
     const token = renderToken;
     window.setTimeout(() => {
       if (token !== renderToken) return;
       if (mode === "adventure" && state.lives === 0) {
         state.screen = "result";
         state.result = { outcome: "captured", round: state.records.length };
+        recordRunResult();
       } else if (state.records.length >= (mode === "adventure" ? ADVENTURE_TOTAL : DUEL_TOTAL)) {
         state.screen = "result";
         state.result = mode === "adventure"
           ? { outcome: "treasure", round: ADVENTURE_TOTAL, lives: state.lives }
           : duelResult();
+        recordRunResult();
       } else {
         state.pending = state.predictor.predict();
       }
@@ -495,7 +553,10 @@
           <button type="button" data-choice="L" ${state.locked ? "disabled" : ""}><span>‹</span><strong>驶入左航道</strong><small>PORT / L</small></button>
           <button type="button" data-choice="R" ${state.locked ? "disabled" : ""}><strong>驶入右航道</strong><small>STARBOARD / R</small><span>›</span></button>
         </div>
-        <p class="adventure-footnote">第 ${String(next).padStart(3, "0")} 手机器已押好 · 请选择航道</p>
+        <div class="adventure-commandline">
+          <p class="adventure-footnote">第 ${String(next).padStart(3, "0")} 手机器已押好 · 请选择航道</p>
+          ${quickModeButton("relay-speed-toggle--game")}
+        </div>
       </section>
     `;
   }
@@ -503,7 +564,7 @@
   function treasureMap(treasure) {
     return `
       <div class="treasure-map treasure-map--${treasure.id}" aria-label="${treasure.name}的寻获海图">
-        <div class="treasure-index"><small>TREASURE ARCHIVE</small><b>${treasure.archiveNumber} / 03</b></div>
+        <div class="treasure-index"><small>TREASURE ARCHIVE</small><b>${treasure.archiveNumber} / 04</b></div>
         <div class="map-compass"><i>N</i><span></span></div>
         <svg viewBox="0 0 300 360" role="img" aria-label="从香农灯塔到宝藏岛的路线">
           <path class="map-coast" d="M-20 55 C55 22 79 70 130 45 C188 17 227 35 320 3 L320 -10 L-20 -10 Z"/>
@@ -567,20 +628,114 @@
     `;
   }
 
+  function resultCollectionMarkup() {
+    const update = state.archiveUpdate;
+    if (!update) return "";
+    const snapshot = update.snapshot;
+    const newItems = state.newUnlocks
+      .map((id) => snapshot.items.find((item) => item.id === id))
+      .filter(Boolean);
+
+    function contacts(level) {
+      return `<b class="archive-response__contacts" aria-label="档案响应 ${Math.min(3, level)} / 3">${[1, 2, 3]
+        .map((step) => `<i class="${level >= step ? "is-on" : ""}"></i>`)
+        .join("")}</b>`;
+    }
+
+    function changed(id) {
+      return update.responseChanges.some((change) => change.id === id);
+    }
+
+    function improved(key) {
+      return update.improvements.some((change) => change.key === key);
+    }
+
+    if (newItems.length) {
+      const names = newItems.map((item) => item.name).join(" · ");
+      const secondary = mode === "adventure"
+        ? snapshot.items.find((item) => item.id === "question-manuscript")
+        : null;
+      return `
+        <button class="result-collection is-new ${update.completedNow ? "is-complete" : ""} result-collection--${mode}" type="button" data-collection>
+          <span>${update.completedNow ? "FILE COMPLETE / 六份档案齐备" : `NEW ARCHIVE / 本次补录 ${newItems.length} 件`}</span>
+          <strong>${update.completedNow ? "1953 实验总档已经打开" : names}</strong>
+          ${secondary && !secondary.unlocked ? `<em>${secondary.code} · ${secondary.response.label}</em>` : ""}
+          <small>打开香农档案柜 · ${snapshot.count} / ${snapshot.total}</small>
+        </button>
+      `;
+    }
+
+    if (mode === "adventure" && state.result.outcome === "captured") {
+      const furthest = snapshot.records.furthestMile;
+      return `
+        <button class="result-collection archive-response ${improved("furthestMile") ? "is-improved" : ""}" type="button" data-collection>
+          <span>${improved("furthestMile") ? "NEW LOCAL RECORD / 航迹延长" : "VOYAGE EVIDENCE / 本机航迹"}</span>
+          <strong>${improved("furthestMile") ? `最远记录推进到第 ${furthest} 海里` : `本机最远记录仍在第 ${furthest} 海里`}</strong>
+          <small>宝藏尚未回收 · 打开档案柜</small>
+        </button>
+      `;
+    }
+
+    let target;
+    let recordKey;
+    if (mode === "adventure") {
+      target = snapshot.items.find((item) => item.id === "question-manuscript");
+      recordKey = "minDangerHits";
+    } else if (state.result.playerWins > state.result.machineWins) {
+      target = snapshot.items.find((item) => item.id === "shannon-breaker");
+      recordKey = "duelMinMachineWins";
+    } else if (state.result.machineWins > state.result.playerWins) {
+      target = snapshot.items.find((item) => item.id === "most-wanted");
+      recordKey = "duelMaxMachineWins";
+    }
+
+    if (!target) {
+      return `
+        <button class="result-collection result-collection--duel archive-response is-silent" type="button" data-collection>
+          <span>CASE 8 / VALID SAMPLE</span>
+          <strong>两枚未署名封条仍然静默</strong>
+          <small>第 ${snapshot.records.duelRuns} 份样本已归档 · ${snapshot.count} / ${snapshot.total}</small>
+        </button>
+      `;
+    }
+
+    const response = target.response;
+    const isImproved = improved(recordKey) || changed(target.id);
+    const confirmation = target.unlocked && response.confirmations > 1
+      ? ` · 第 ${response.confirmations} 次确认`
+      : "";
+    const smartReminder = mode === "duel" && target.id === "shannon-breaker" && !target.unlocked
+      ? "聪明蛋不是最后一份档案 · "
+      : "";
+    return `
+      <button class="result-collection result-collection--${mode} archive-response response-level-${response.level} ${isImproved ? "is-improved" : ""}" type="button" data-collection>
+        <span>${isImproved ? "ARCHIVE RESPONSE / 响应增强" : "ARCHIVE RESPONSE / 当前信号"}</span>
+        ${contacts(response.level)}
+        <strong>${target.code} · ${response.label}${confirmation}</strong>
+        <small>${smartReminder}${response.evidence || target.hint} · 打开档案柜</small>
+      </button>
+    `;
+  }
+
   function adventureResult() {
     const won = state.result.outcome === "treasure";
     const tell = tellReport();
     if (won) {
-      const treasure = Engine.classifyTreasure(state.result.lives);
+      const treasure = state.result.treasure || Engine.classifyTreasure(state.result.lives, state.result.dangerHits);
       const greeting = escapeHtml(Engine.formatTreasureGreeting(nickname, treasure));
+      const voyageProof = treasure.id === "question-manuscript"
+        ? `红光锁定 0 次 · 航行 ${ADVENTURE_TOTAL} 海里`
+        : `带着 ${state.result.lives} 盏命灯 · 航行 ${ADVENTURE_TOTAL} 海里`;
       return `
         <section class="adventure-result treasure-result treasure-result--${treasure.id}">
-          <header><span>SHANNON TREASURE ARCHIVE</span><b>${safeNickname} · 图鉴 ${treasure.archiveNumber} / 03</b></header>
+          <header><span>SHANNON TREASURE ARCHIVE</span><b>${safeNickname} · 图鉴 ${treasure.archiveNumber} / 04</b></header>
           ${treasureMap(treasure)}
-          <div class="treasure-copy"><p>${treasure.rarityLabel} · 图鉴稀有度 ${treasure.rarityLevel} / 3</p><h1>${treasure.name}</h1><strong>带着 ${state.result.lives} 盏命灯 · 航行 ${ADVENTURE_TOTAL} 海里</strong><span>${greeting}</span></div>
-          <div class="treasure-seal"><span>稀有</span><strong>${treasure.rarityLevel}/3</strong></div>
+          <div class="treasure-copy"><p>${treasure.rarityLabel} · 图鉴稀有度 ${treasure.rarityLevel} / 4</p><h1>${treasure.name}</h1><strong>${voyageProof}</strong><span>${greeting}</span></div>
+          <div class="treasure-seal"><span>稀有</span><strong>${treasure.rarityLevel}/4</strong></div>
+          ${resultCollectionMarkup()}
           ${personaMarkup()}
           <p class="share-note">昵称、路线与结局会写进 1080 × 1440 战报图</p>
+          ${quickModeButton("relay-speed-toggle--result")}
           <div class="result-action-row result-action-row--adventure"><button class="share-result-button share-result-button--gold" type="button" data-action="share">生成图鉴战报</button><button class="result-restart result-restart--gold" type="button" data-action="restart">再寻一件宝藏</button></div>
           ${researchClue(true)}
         </section>
@@ -597,7 +752,9 @@
           <strong>截获</strong>
         </div>
         <div class="captured-copy"><p>${safeNickname}，三盏命灯全部熄灭</p><h1>海图断在<br>第 ${state.result.round} 海里</h1><span>${lossGreeting}</span></div>
+        ${resultCollectionMarkup()}
         ${personaMarkup()}
+        ${quickModeButton("relay-speed-toggle--result")}
         <div class="result-action-row result-action-row--adventure"><button class="share-result-button" type="button" data-action="share">生成截获战报</button><button class="result-restart" type="button" data-action="restart">换条路线，再来</button></div>
         ${researchClue(false)}
       </section>
@@ -738,6 +895,7 @@
         </div>
         <div class="duel-game__footer">
           <p class="duel-game__note">机器先押且不改答案 · 红灯只显示把握，不泄露方向</p>
+          ${quickModeButton("relay-speed-toggle--game")}
           <button type="button" data-action="reset-duel" aria-label="清空比分与八格记忆，重置 CASE 8">重置本局</button>
         </div>
       </section>
@@ -756,7 +914,7 @@
         title: perfect ? "一手都没躲开的传奇" : "机器最喜欢的大坏蛋",
         text: perfect
           ? "64 手，一手都没躲开。能把机器喂得这么饱，也是一种罕见天赋。"
-          : `机器以 ${machineWins}:${playerWins} 赢过了 3:1。你从另一端撞开了一张隐藏卡。`,
+          : `机器以 ${machineWins}:${playerWins} 超过了 2:1。你从另一端撞开了一张隐藏卡。`,
       };
     }
     if (egg.kind === "smart") {
@@ -788,11 +946,13 @@
           <h2>${greeting}</h2>
           <p class="egg-copy">${copy.text}</p>
           ${achievement}
+          ${resultCollectionMarkup()}
           ${personaMarkup()}
           ${visitProfileMarkup(result.visitProfile)}
           <div class="egg-score"><span>你 <b>${result.playerWins}</b></span><i>:</i><span>机器 <b>${result.machineWins}</b></span></div>
           <footer><span>8 × 8 手 · 本机计算</span><span>未联网 / 未上传</span></footer>
         </article>
+        ${quickModeButton("relay-speed-toggle--result")}
         <div class="result-action-row"><button class="share-result-button share-result-button--duel" type="button" data-action="share">生成严选战报</button><button class="result-restart result-restart--duel" type="button" data-action="restart">重新挑战香农</button></div>
       </section>
     `;
@@ -984,10 +1144,86 @@
     context.fillText(label, 78, 148);
   }
 
+  function archiveShareSummary() {
+    const update = state.archiveUpdate;
+    const snapshot = update ? update.snapshot : collection.snapshot();
+    const improvements = update ? update.improvements : [];
+    const improved = (key) => improvements.some((change) => change.key === key);
+    let label = update && update.completedNow
+      ? "FILE COMPLETE / 六份齐备"
+      : update && update.newUnlocks.length
+        ? `NEW ARCHIVE / +${update.newUnlocks.length}`
+        : "LOCAL ARCHIVE / 本机档案";
+    let evidence;
+
+    if (mode === "adventure") {
+      if (state.result.outcome === "captured") {
+        if (improved("furthestMile")) label = "NEW LOCAL RECORD / 航迹延长";
+        evidence = `本机最远第 ${snapshot.records.furthestMile} 海里`;
+      } else {
+        if (!update.completedNow && !update.newUnlocks.length && improved("minDangerHits")) {
+          label = "NEW LOCAL RECORD / 红光减少";
+        }
+        evidence = snapshot.records.minDangerHits === null
+          ? "尚无完整航迹"
+          : `本机最少红光 ${snapshot.records.minDangerHits} 次`;
+      }
+      return { label, evidence, count: snapshot.count, response: null };
+    }
+
+    let target = null;
+    if (state.result.playerWins > state.result.machineWins) {
+      target = snapshot.items.find((item) => item.id === "shannon-breaker");
+    } else if (state.result.machineWins > state.result.playerWins) {
+      target = snapshot.items.find((item) => item.id === "most-wanted");
+    }
+    if (!target) {
+      return {
+        label: "CASE 8 / VALID SAMPLE",
+        evidence: `两枚封条静默 · 第 ${snapshot.records.duelRuns} 份样本`,
+        count: snapshot.count,
+        response: null,
+      };
+    }
+    if (!update.completedNow && !update.newUnlocks.length && update.responseChanges.some((change) => change.id === target.id)) {
+      label = "ARCHIVE RESPONSE / 响应增强";
+    }
+    return {
+      label,
+      evidence: `${target.code} · ${target.response.label} · ${target.response.evidence}`,
+      count: snapshot.count,
+      response: target.response,
+    };
+  }
+
+  function drawArchiveShareBand(context, y, options = {}) {
+    const summary = archiveShareSummary();
+    const dark = options.dark !== false;
+    const accent = options.accent || (dark ? "#76f7b0" : "#a54235");
+    const x = options.x || 78;
+    const width = options.width || 924;
+    context.fillStyle = dark ? "rgba(118,247,176,0.045)" : "rgba(255,255,255,0.11)";
+    context.fillRect(x, y, width, 74);
+    context.strokeStyle = dark ? "rgba(118,247,176,0.42)" : "rgba(23,59,57,0.46)";
+    context.lineWidth = 2;
+    context.strokeRect(x, y, width, 74);
+    context.fillStyle = accent;
+    context.font = canvasFont(17, { mono: true, weight: 700 });
+    context.textAlign = "left";
+    context.fillText(summary.label, x + 18, y + 25);
+    context.textAlign = "right";
+    context.fillText(`ARCHIVE ${summary.count} / 6`, x + width - 18, y + 25);
+    context.fillStyle = dark ? "#d7e1db" : "#173b39";
+    context.font = canvasFont(23, { serif: true, weight: 700 });
+    context.textAlign = "left";
+    context.fillText(summary.evidence, x + 18, y + 56);
+  }
+
   function drawAdventureShare(context) {
     const won = state.result.outcome === "treasure";
-    const treasure = won ? Engine.classifyTreasure(state.result.lives) : null;
-    const tell = tellReport();
+    const treasure = won
+      ? state.result.treasure || Engine.classifyTreasure(state.result.lives, state.result.dangerHits)
+      : null;
     context.fillStyle = won ? "#d7c38d" : "#061923";
     context.fillRect(0, 0, 1080, 1440);
     drawCardGrid(context, won ? "rgba(23,59,57,0.09)" : "rgba(118,247,176,0.045)", 54);
@@ -1054,7 +1290,7 @@
         context.closePath();
         context.fill();
         context.stroke();
-      } else {
+      } else if (treasure.id === "shannon-key") {
         context.strokeStyle = "#244d48";
         context.fillStyle = "#efc75d";
         context.lineWidth = 12;
@@ -1066,18 +1302,39 @@
         context.strokeRect(-20, -37, 132, 25);
         context.fillRect(72, -12, 25, 45);
         context.fillRect(102, -12, 25, 30);
+      } else {
+        context.fillStyle = "#dfca91";
+        context.strokeStyle = "#6d4d28";
+        context.lineWidth = 7;
+        context.fillRect(-63, -76, 126, 152);
+        context.strokeRect(-63, -76, 126, 152);
+        context.strokeStyle = "#86704a";
+        context.lineWidth = 3;
+        for (let y = -48; y <= 22; y += 18) {
+          context.beginPath();
+          context.moveTo(-42, y);
+          context.lineTo(38, y);
+          context.stroke();
+        }
+        context.fillStyle = "#a33e32";
+        context.font = canvasFont(86, { serif: true, weight: 700 });
+        context.textAlign = "center";
+        context.fillText("?", 36, 72);
       }
       context.restore();
 
       context.fillStyle = "#9f382f";
       context.font = canvasFont(24, { mono: true, weight: 700 });
       context.textAlign = "center";
-      context.fillText(`${nickname} / TREASURE ARCHIVE ${treasure.archiveNumber} OF 03`, 540, 955);
+      context.fillText(`${nickname} / TREASURE ARCHIVE ${treasure.archiveNumber} OF 04`, 540, 955);
       context.fillStyle = "#162d2b";
       context.font = canvasFont(70, { serif: true, weight: 700 });
       context.fillText(treasure.name, 540, 1025);
       context.font = canvasFont(28, { weight: 700 });
-      context.fillText(`${treasure.rarityLabel} · 稀有等级 ${treasure.rarityLevel} / 3 · ${state.result.lives} 盏命灯`, 540, 1078);
+      const proof = treasure.id === "question-manuscript"
+        ? `${treasure.rarityLabel} · 稀有等级 ${treasure.rarityLevel} / 4 · 红光锁定 0 次`
+        : `${treasure.rarityLabel} · 稀有等级 ${treasure.rarityLevel} / 4 · ${state.result.lives} 盏命灯`;
+      context.fillText(proof, 540, 1078);
       context.font = canvasFont(26, { serif: true, weight: 700 });
       drawWrappedText(context, Engine.formatTreasureGreeting(nickname, treasure), 540, 1125, 840, 38, 2);
     } else {
@@ -1127,6 +1384,10 @@
       drawWrappedText(context, Engine.formatAdventureLossGreeting(nickname, state.result.round), 540, 1125, 840, 38, 2);
     }
 
+    drawArchiveShareBand(context, 1260, {
+      dark: !won,
+      accent: won ? "#a54235" : "#ef665c",
+    });
     context.textAlign = "left";
     context.fillStyle = won ? "#4f665c" : "#69837b";
     context.font = canvasFont(18, { mono: true });
@@ -1250,6 +1511,8 @@
       );
     }
 
+    drawArchiveShareBand(context, 1122, { dark: true, accent, x: 190, width: 700 });
+
     // The card bottom is a fixed budget: the tell block needs ~120px and the
     // footprint ~116px, and the achievement plate eats 52 of them when present.
     drawDuelVisitSpectrum(
@@ -1320,6 +1583,7 @@
     if (state.screen !== "result") return;
     const previousModal = document.querySelector(".share-card-modal");
     if (previousModal) previousModal.remove();
+    const previousFocus = document.activeElement;
 
     const cards = {
       result: { label: mode === "adventure" ? "战报" : "严选战报", url: null },
@@ -1352,7 +1616,10 @@
     const image = modal.querySelector("img");
     const saveButton = modal.querySelector("[data-save-share]");
     const saveStatus = modal.querySelector("[data-save-status]");
-    const close = () => modal.remove();
+    const close = () => {
+      modal.remove();
+      if (previousFocus && document.documentElement.contains(previousFocus)) previousFocus.focus();
+    };
 
     modal.querySelectorAll("[data-card]").forEach((tab) => {
       tab.addEventListener("click", () => {
@@ -1367,6 +1634,7 @@
     });
 
     modal.querySelector("[data-close-share]").addEventListener("click", close);
+    modal.addEventListener("keydown", (event) => { if (event.key === "Escape") close(); });
     modal.addEventListener("click", (event) => { if (event.target === modal) close(); });
     saveButton.addEventListener("click", () => saveShareImage(urlFor(active), saveStatus, saveButton));
     modal.querySelector("[data-close-share]").focus();
@@ -1394,12 +1662,17 @@
     const resetDuelButton = root.querySelector('[data-action="reset-duel"]');
     const researchButton = root.querySelector('[data-action="research"]');
     const shareButton = root.querySelector('[data-action="share"]');
+    const speedButton = root.querySelector('[data-action="toggle-speed"]');
     if (homeButton) homeButton.addEventListener("click", goHome);
     if (beginButton) beginButton.addEventListener("click", begin);
     if (restartButton) restartButton.addEventListener("click", restart);
     if (resetDuelButton) resetDuelButton.addEventListener("click", resetDuel);
     if (researchButton) researchButton.addEventListener("click", enterResearchRoom);
     if (shareButton) shareButton.addEventListener("click", showShareCard);
+    if (speedButton) speedButton.addEventListener("click", toggleQuickMode);
+    root.querySelectorAll("[data-collection]").forEach((button) => {
+      button.addEventListener("click", openCollectionCabinet);
+    });
     root.querySelectorAll("[data-choice]").forEach((button) => {
       button.addEventListener("click", () => choose(button.dataset.choice));
     });
@@ -1407,6 +1680,7 @@
 
   function handleGlobalKeydown(event) {
     if (event.repeat || event.metaKey || event.ctrlKey || event.altKey) return;
+    if (document.querySelector(".collection-cabinet-modal, .share-card-modal")) return;
     if (event.key === "ArrowLeft" && state.screen === "play") choose(Engine.LEFT);
     if (event.key === "ArrowRight" && state.screen === "play") choose(Engine.RIGHT);
   }
@@ -1419,6 +1693,7 @@
     window.removeEventListener("keydown", handleGlobalKeydown);
     const shareModal = document.querySelector(".share-card-modal");
     if (shareModal) shareModal.remove();
+    if (typeof miniTool.closeCollectionCabinet === "function") miniTool.closeCollectionCabinet();
     root.remove();
     document.body.classList.remove("two-mode-prototype-mode");
     if (audioContext && typeof audioContext.close === "function") {

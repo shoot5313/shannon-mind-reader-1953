@@ -74,6 +74,27 @@ test("CASE 8 has a direct research entrance as well as the post-voyage clue", ()
   assert.match(game, /CASE 8/);
 });
 
+test("the relay cabinet exposes and records four treasures plus two CASE 8 seals", () => {
+  const engine = fs.readFileSync(path.join(root, "src/engine.js"), "utf8");
+  const entry = fs.readFileSync(path.join(root, "src/unified-entry.js"), "utf8");
+  const game = fs.readFileSync(path.join(root, "src/two-mode-prototype.js"), "utf8");
+
+  ["余烬金币", "继电罗盘", "香农密钥", "问号原稿", "香农破解章", "重点观察章"].forEach((name) => {
+    assert.match(engine, new RegExp(name));
+  });
+  assert.match(entry, /打开香农档案柜/);
+  assert.match(entry, /04 SLOTS/);
+  assert.match(entry, /02 SLOTS/);
+  assert.match(game, /聪明蛋不是最后一份档案/);
+  assert.match(game, /state\.records\.filter\(\(record\) => record\.dangerHit\)\.length/);
+  assert.match(game, /Engine\.classifyTreasure\(state\.result\.lives, state\.result\.dangerHits\)/);
+  assert.match(game, /collection\.recordAdventure\(/);
+  assert.match(game, /collection\.recordDuel\(/);
+  assert.match(engine, /qualifyingTreasureIds\(lives, dangerHits\)/);
+  assert.match(engine, /qualifying\.push\("shannon-breaker"\)/);
+  assert.match(engine, /qualifying\.push\("most-wanted"\)/);
+});
+
 test("adventure and CASE 8 use separate, intentional lengths", () => {
   const game = fs.readFileSync(path.join(root, "src/two-mode-prototype.js"), "utf8");
 
@@ -169,7 +190,16 @@ test("release runtime is self-contained, permission-light, and below 10 MiB befo
 
   assert.ok(bytes < 10 * 1024 * 1024, `release sources total ${bytes} bytes`);
   assert.doesNotMatch(source, /\b(?:fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon|getUserMedia)\s*\(/);
-  assert.doesNotMatch(source, /\b(?:localStorage|sessionStorage|indexedDB|mediaDevices|geolocation|Notification)\b/);
+  assert.doesNotMatch(source, /\b(?:sessionStorage|indexedDB|mediaDevices|geolocation|Notification)\b/);
+  const entryRuntime = fs.readFileSync(path.join(root, "src/unified-entry.js"), "utf8");
+  assert.equal(
+    (entryRuntime.match(/window\.localStorage/g) || []).length,
+    1,
+    "the cabinet is the only runtime feature allowed to request local persistence",
+  );
+  assert.match(source, /shannon-mind-reader\.collection\.v2/);
+  assert.match(source, /shannon-mind-reader\.collection\.v1/, "the v1 cabinet must migrate in place");
+  assert.match(source, /Names, individual moves and routes[\s*]+never enter this store/);
   assert.doesNotMatch(source, /\b(?:eval|Function)\s*\(|\bWebAssembly\b|\b(?:Worker|SharedWorker)\s*\(/);
   assert.doesNotMatch(source, /window\.location\.href\s*=|location\.assign\s*\(|<a[^>]+\bdownload\b/i);
   assert.match(source, /window\.xhs\.miniTool\.writeTempFile/);
@@ -245,15 +275,81 @@ test("shipped source carries no stray non-CJK scripts", () => {
   });
 });
 
+/*
+ * Strips comments and string/template literals so UI copy cannot trip the syntax
+ * checks below. The sealed-file placeholder is literally "???", which a naive
+ * scan reads as nullish coalescing.
+ */
+function stripLiterals(source) {
+  let out = "";
+  let index = 0;
+  while (index < source.length) {
+    const char = source[index];
+    const next = source[index + 1];
+    if (char === "/" && next === "/") {
+      while (index < source.length && source[index] !== "\n") index += 1;
+      continue;
+    }
+    if (char === "/" && next === "*") {
+      index += 2;
+      while (index < source.length && !(source[index] === "*" && source[index + 1] === "/")) index += 1;
+      index += 2;
+      continue;
+    }
+    if (char === '"' || char === "'" || char === "`") {
+      const quote = char;
+      index += 1;
+      while (index < source.length) {
+        if (source[index] === "\\") { index += 2; continue; }
+        if (source[index] === quote) { index += 1; break; }
+        index += 1;
+      }
+      out += `${quote}${quote}`;
+      continue;
+    }
+    out += char;
+    index += 1;
+  }
+  return out;
+}
+
 test("release JavaScript stays within the Chrome 61 / ES2017 baseline", () => {
-  const source = ["src/engine.js", "src/unified-entry.js", "src/two-mode-prototype.js"]
-    .map((relative) => fs.readFileSync(path.join(root, relative), "utf8"))
+  const files = ["src/engine.js", "src/unified-entry.js", "src/two-mode-prototype.js"];
+  const code = files
+    .map((relative) => stripLiterals(fs.readFileSync(path.join(root, relative), "utf8")))
     .join("\n");
 
-  assert.doesNotMatch(source, /\?\.[A-Za-z_$[(]/, "optional chaining requires transpilation");
-  assert.doesNotMatch(source, /(?:\|\|=|&&=|\?\?=)/, "logical assignment requires transpilation");
-  assert.doesNotMatch(source, /[{,]\s*\.\.\.[A-Za-z_$]/, "object spread requires transpilation");
-  assert.doesNotMatch(source, /\.replaceAll\s*\(|\.at\s*\(|Object\.hasOwn\s*\(|structuredClone\s*\(/);
+  const banned = [
+    [/\?\.[A-Za-z_$[(]/, "optional chaining (ES2020)"],
+    [/\?\?/, "nullish coalescing (ES2020)"],
+    [/\|\|=|&&=/, "logical assignment (ES2021)"],
+    [/[{,]\s*\.\.\.[A-Za-z_$]/, "object spread (ES2018)"],
+    [/\bcatch\s*\{/, "optional catch binding (ES2019)"],
+    [/\.flat\s*\(|\.flatMap\s*\(|\.at\s*\(|\.replaceAll\s*\(/, "ES2019+ array/string methods"],
+    [/Object\.hasOwn\s*\(|structuredClone\s*\(/, "ES2022 helpers"],
+    [/\bBigInt\b/, "BigInt (ES2020)"],
+    [/#[A-Za-z_$][\w$]*\s*[=(;]/, "private class fields (ES2022)"],
+  ];
+  banned.forEach(([pattern, label]) => {
+    assert.doesNotMatch(code, pattern, `${label} needs transpilation for Chrome 61`);
+  });
+
+  // globalThis is ES2020, so every mention has to sit inside a typeof guard with
+  // a fallback. `typeof` on an undeclared name does not throw, which is what
+  // makes the guard safe on Chrome 61.
+  const mentions = (code.match(/globalThis/g) || []).length;
+  const guarded = (code.match(/typeof globalThis !== "" \? globalThis :/g) || []).length;
+  assert.ok(mentions > 0, "the guard itself should still be present");
+  assert.equal(mentions, guarded * 2, "every globalThis must be inside a typeof guard with a fallback");
+
+  // That fallback is `this`, which is only the global object while the file is a
+  // classic non-strict script. A top-level "use strict" would make it undefined.
+  const engine = fs.readFileSync(path.join(root, "src/engine.js"), "utf8");
+  assert.doesNotMatch(
+    engine.split("\n").slice(0, 3).join("\n"),
+    /"use strict"/,
+    "engine.js must stay non-strict at file scope or the globalThis fallback breaks",
+  );
 });
 
 test("release CSS has a Chrome 61 baseline before modern enhancements", () => {
